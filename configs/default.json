@@ -1,0 +1,17 @@
+{
+  "selection": {
+    "side": "R", "center": [18, 19], "radius": 4,
+    "input_types": ["L1", "L2", "L3"],
+    "downstream_per_type": 24
+  },
+  "model": {
+    "dt_ms": 1.0, "tau_membrane_ms": 20.0, "tau_synapse_ms": 5.0,
+    "refractory_ms": 2.0, "delay_ms": 2.0, "synapse_gain": 0.04,
+    "input_baseline": 0.15, "input_gain": 2.0
+  },
+  "runtime": {
+    "frame_hz": 30.0, "osc_hz": 20.0, "normalization_hz": 100.0,
+    "max_lag_seconds": 0.25, "camera_stale_seconds": 1.0,
+    "host": "127.0.0.1", "port": 9000
+  }
+}

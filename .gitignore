@@ -1,2 +1,7 @@
 .mcns/
 data/
+build/
+runs/
+__pycache__/
+*.pyc
+models/
