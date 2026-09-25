@@ -9,6 +9,8 @@ import numpy as np
 class Features:
     def __init__(self):
         self.previous = {}
+        from .scene import Instances
+        self.face_tracks = Instances()
 
     def velocity(self, key, xy, stamp):
         old = self.previous.get(key)
@@ -42,12 +44,20 @@ class Features:
         for key, values in result.items():
             if values[0] == 0:
                 self.previous.pop(key, None)
+        faces=[]
+        for landmarks in face.face_landmarks:
+            xy=np.array([[p.x,p.y] for p in landmarks]); low=xy.min(axis=0);high=xy.max(axis=0)
+            faces.append({"label":"face","center":xy.mean(axis=0).tolist(),"box":[*low.tolist(),*high.tolist()]})
+        result["faces"] = self.face_tracks.update(faces, stamp)
+        result["hands"] = [{"side":labels[0].category_name,
+                            "center":[float(np.mean([p.x for p in marks])),float(np.mean([p.y for p in marks]))]}
+                           for marks,labels in zip(hands.hand_landmarks,hands.handedness)]
         return result
 
 
 class Tracker:
     """VIDEO inference in its own thread, always consuming only the newest frame."""
-    def __init__(self, camera, model_dir):
+    def __init__(self, camera, model_dir, preview=False):
         model_dir = Path(model_dir)
         for name in ("hand_landmarker.task", "face_landmarker.task"):
             if not (model_dir / name).is_file():
@@ -55,6 +65,7 @@ class Tracker:
         self.camera, self.model_dir = camera, model_dir
         self.stop, self.lock = threading.Event(), threading.Lock()
         self.latest, self.error = None, None
+        self.preview_enabled, self.preview = preview, None
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
@@ -67,11 +78,11 @@ class Tracker:
             hands_options = vision.HandLandmarkerOptions(
                 base_options=base(model_asset_path=str(self.model_dir / "hand_landmarker.task"),
                                   delegate=base.Delegate.CPU),
-                running_mode=vision.RunningMode.VIDEO, num_hands=2)
+                running_mode=vision.RunningMode.VIDEO, num_hands=6)
             face_options = vision.FaceLandmarkerOptions(
                 base_options=base(model_asset_path=str(self.model_dir / "face_landmarker.task"),
                                   delegate=base.Delegate.CPU),
-                running_mode=vision.RunningMode.VIDEO, num_faces=1)
+                running_mode=vision.RunningMode.VIDEO, num_faces=4)
             features = Features()
             last_seq, last_ms = 0, -1
             origin = time.monotonic()
@@ -86,10 +97,16 @@ class Tracker:
                     milliseconds = max(last_ms + 1, round((stamp - origin) * 1000), 0)
                     image = mp.Image(image_format=mp.ImageFormat.SRGB,
                                      data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    result = features.summarize(hands.detect_for_video(image, milliseconds),
-                                                face.detect_for_video(image, milliseconds), stamp)
+                    hand_result = hands.detect_for_video(image, milliseconds)
+                    face_result = face.detect_for_video(image, milliseconds)
+                    result = features.summarize(hand_result, face_result, stamp)
+                    jpeg = None
+                    if self.preview_enabled:
+                        from .preview import encode_preview
+                        jpeg = encode_preview(frame, hand_result, face_result)
                     with self.lock:
                         self.latest = (seq, stamp, result)
+                        self.preview = (seq, stamp, jpeg) if jpeg is not None else None
                     last_seq, last_ms = seq, milliseconds
         except Exception as exc:
             self.error = exc
@@ -103,6 +120,10 @@ class Tracker:
     def close(self):
         self.stop.set()
         self.thread.join(timeout=5)
+
+    def get_preview(self):
+        with self.lock:
+            return self.preview
 
 
 def send_tracking(osc, snapshot, now, stale_seconds=1.0):

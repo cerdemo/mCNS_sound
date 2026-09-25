@@ -9,9 +9,11 @@ def main():
     target = Path("models")
     target.mkdir(exist_ok=True)
     manifest = {}
-    for task in ("hand_landmarker", "face_landmarker"):
-        url = f"https://storage.googleapis.com/mediapipe-models/{task}/{task}/float16/1/{task}.task"
-        path = target / f"{task}.task"
+    assets = {f"{task}.task": f"https://storage.googleapis.com/mediapipe-models/{task}/{task}/float16/1/{task}.task"
+              for task in ("hand_landmarker", "face_landmarker")}
+    assets["efficientdet_lite0.tflite"] = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite"
+    for task, url in assets.items():
+        path = target / task
         if not path.exists():
             temporary = path.with_suffix(".part")
             print(f"Downloading {task}…", flush=True)

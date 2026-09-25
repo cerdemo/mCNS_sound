@@ -9,6 +9,13 @@
     "refractory_ms": 2.0, "delay_ms": 2.0, "synapse_gain": 0.04,
     "input_baseline": 0.15, "input_gain": 2.0
   },
+  "behavior": {
+    "motion_scale": 0.5, "motion_deadband": 0.025,
+    "smoothing_seconds": 0.12, "trigger_threshold": 0.22, "quiet_threshold": 0.10,
+    "trigger_hold_seconds": 0.10, "escape_seconds": 0.6,
+    "hide_quiet_seconds": 3.0, "recover_seconds": 1.5,
+    "wing_base_hz": 190.0, "wing_range_hz": 40.0
+  },
   "runtime": {
     "frame_hz": 30.0, "osc_hz": 20.0, "normalization_hz": 100.0,
     "max_lag_seconds": 0.25, "camera_stale_seconds": 1.0,

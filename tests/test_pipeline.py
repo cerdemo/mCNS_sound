@@ -58,6 +58,20 @@ class GraphTests(unittest.TestCase):
 
 
 class TrackingTests(unittest.TestCase):
+    def test_duplicate_handedness_uses_best_detection_once(self):
+        f = Features()
+        def hand(x):
+            return [SimpleNamespace(x=x+i*.005, y=.3+i*.003) for i in range(21)]
+        labels = [[SimpleNamespace(category_name="Left", score=.6)],
+                  [SimpleNamespace(category_name="Left", score=.9)]]
+        hands = SimpleNamespace(hand_landmarks=[hand(.1), hand(.5)], handedness=labels)
+        face = SimpleNamespace(face_landmarks=[])
+        first = f.summarize(hands, face, 0.)
+        hands.hand_landmarks = [hand(.2), hand(.6)]
+        second = f.summarize(hands, face, .1)
+        self.assertEqual(first["Left"][-1], .9)
+        self.assertAlmostEqual(second["Left"][3], 1.)
+
     def test_reacquisition_resets_velocity(self):
         f = Features()
         self.assertEqual(f.velocity("face", [.2, .3], 0), [0., 0.])
@@ -80,6 +94,39 @@ class TrackingTests(unittest.TestCase):
 
 
 class IntegrationTests(unittest.TestCase):
+    @unittest.skipUnless(Path("build/visual-v1/manifest.json").exists(), "Requires prepared MaleCNS data")
+    def test_behavior_does_not_change_neurons_and_stops_flight_output(self):
+        import time
+        class FakeCamera:
+            seq = 0
+            def __init__(self, *args, **kwargs):
+                pass
+            def get(self):
+                self.seq += 1
+                return self.seq, time.monotonic(), np.full((128,128,3), 170, np.uint8)
+            def close(self):
+                pass
+        class FakeTracker:
+            def __init__(self, *args, **kwargs):
+                pass
+            def get(self):
+                return 1, time.monotonic(), {"face": [1,.5,.5,.8,0.,.2]}
+            def close(self):
+                pass
+        config = load_config("configs/default.json")
+        with tempfile.TemporaryDirectory() as folder:
+            with patch("mcns.runtime.Camera", FakeCamera), patch("mcns.tracking.Tracker", FakeTracker), \
+                    patch("mcns.runtime.Output") as out, contextlib.redirect_stdout(io.StringIO()):
+                raw = run("build/visual-v1", config, "camera", 2, Path(folder)/"raw", realtime=False)
+                behavioral = run("build/visual-v1", config, "camera", 2, Path(folder)/"behavior",
+                                  realtime=False, track=True, behavior=True)
+            self.assertEqual(raw["total_spikes"], behavioral["total_spikes"])
+            logs = [json.loads(line) for line in (Path(folder)/"behavior/behavior.jsonl").read_text().splitlines()]
+            self.assertEqual(logs[-1]["state"], "hidden")
+            flights = [c.args for c in out.return_value.send.call_args_list if c.args[0] == "/mcns/flight"]
+            self.assertGreater(len(flights), 1)
+            self.assertEqual(flights[-1][2:5], (0., 0., 0.))
+
     @unittest.skipUnless(Path("build/visual-v1/manifest.json").exists(), "Requires prepared MaleCNS data")
     def test_real_graph_stimuli_and_persisted_metadata(self):
         config = load_config("configs/default.json")

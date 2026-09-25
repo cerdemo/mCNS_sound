@@ -20,8 +20,13 @@ def load_config(path):
     for key in ["input_gain", "input_baseline", "synapse_gain", "refractory_ms"]:
         if not math.isfinite(config["model"][key]) or config["model"][key] < 0:
             raise ValueError(f"model.{key} must be finite and non-negative")
+    for key, value in config["behavior"].items():
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"behavior.{key} must be finite and positive")
+    if not config["behavior"]["quiet_threshold"] < config["behavior"]["trigger_threshold"] <= 1:
+        raise ValueError("Require quiet_threshold < trigger_threshold <= 1")
     s = config["selection"]
-    if s["side"] not in ("L", "R") or s["radius"] < 1 or s["downstream_per_type"] < 0:
+    if s["side"] not in ("L", "R", "both") or s["radius"] < 1 or s["downstream_per_type"] < 0:
         raise ValueError("Invalid graph selection")
     return config
 
@@ -33,6 +38,11 @@ def main():
     build.add_argument("--data", default="data")
     build.add_argument("--graph", default="build/visual-v1")
     build.add_argument("--config", default="configs/default.json")
+    widget = sub.add_parser("serve", help="Browser-controlled widget, synthesis and OSC bridge")
+    widget.add_argument("--graph", default="build/bilateral-v1")
+    widget.add_argument("--config", default="configs/bilateral.json")
+    widget.add_argument("--models", default="models")
+    widget.add_argument("--dashboard-port", type=int, default=8765)
     live = sub.add_parser("run", help="Run controlled stimulus or live camera input")
     live.add_argument("--graph", default="build/visual-v1")
     live.add_argument("--config", default="configs/default.json")
@@ -46,6 +56,7 @@ def main():
     live.add_argument("--models", default="models")
     live.add_argument("--dashboard", action="store_true", help="Serve live neuron maps at localhost:8765")
     live.add_argument("--dashboard-port", type=int, default=8765)
+    live.add_argument("--behavior", action="store_true", help="Enable authored fly/escape/hide behavior (also enables tracking)")
     live.add_argument("--host")
     live.add_argument("--port", type=int)
     args = parser.parse_args()
@@ -53,10 +64,20 @@ def main():
     if args.command == "prepare":
         prepare(args.data, args.graph, config)
         return
+    if not 1 <= args.dashboard_port <= 65535:
+        parser.error("Dashboard port must be in 1..65535")
+    if not 1 <= config["runtime"]["port"] <= 65535:
+        parser.error("OSC port must be in 1..65535")
+    if args.command == "serve":
+        from .server import serve
+        serve(args.graph, config, args.models, args.dashboard_port)
+        return
     if not math.isfinite(args.duration) or args.duration <= 0:
         parser.error("--duration must be finite and positive")
     if args.fast and args.source == "camera":
         parser.error("--fast is only supported for synthetic stimuli")
+    if args.behavior:
+        args.track = True
     if args.track and args.source != "camera":
         parser.error("--track requires --source camera")
     if args.host:
@@ -69,7 +90,7 @@ def main():
         parser.error("Dashboard port must be in 1..65535")
     output = args.output or ("runs/" + datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
     run(args.graph, config, args.source, args.duration, output, not args.fast, args.device,
-        args.mirror, args.track, args.models, args.dashboard_port if args.dashboard else None)
+        args.mirror, args.track, args.models, args.dashboard_port if args.dashboard else None, args.behavior)
 
 
 if __name__ == "__main__":

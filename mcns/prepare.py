@@ -49,40 +49,44 @@ def prepare(data_dir, output, config):
     if nt.body.isna().any() or nt.body.duplicated().any():
         raise ValueError("Invalid neurotransmitter IDs")
     s = config["selection"]
-    eligible = a[(a.status == "Traced") & (a.somaSide == s["side"])
-                 & (a.superclass == "ol_intrinsic")].copy()
-    h = eligible.dropna(subset=["assignedOlHex1", "assignedOlHex2"])
-    dq = h.assignedOlHex1 - s["center"][0]
-    dr = h.assignedOlHex2 - s["center"][1]
-    distance = np.maximum.reduce([abs(dq), abs(dr), abs(dq - dr)])
-    core = h[distance <= s["radius"]].copy()
-    core_ids = core.bodyId.to_numpy()
-    target_types = [f"T{number}{letter}" for number in (4, 5) for letter in "abcd"]
-    candidates = eligible[eligible.type.isin(target_types)]
-    candidate_index = pd.Index(candidates.bodyId)
-    scores = np.zeros(len(candidates), dtype=np.int64)
-    rows_total = 0
-    print("Scanning connections to select T4/T5 targets…", flush=True)
-    for pre, post, weight in batches(paths["connections"]):
-        if (weight <= 0).any():
-            raise ValueError("Non-positive anatomical connection weight")
-        rows_total += len(pre)
-        mask = np.isin(pre, core_ids)
-        indices = candidate_index.get_indexer(post[mask])
-        valid = indices >= 0
-        np.add.at(scores, indices[valid], weight[mask][valid])
-    candidates = candidates.assign(input_synapses=scores)
-    downstream = (candidates[candidates.input_synapses > 0]
-                  .sort_values(["input_synapses", "bodyId"], ascending=[False, True])
-                  .groupby("type", sort=True).head(s["downstream_per_type"]))
-    neurons = pd.concat([core, downstream]).sort_values("bodyId").reset_index(drop=True)
+    if s.get("mode") == "bilateral":
+        from .circuit import select_bilateral
+        neurons, rows_total = select_bilateral(a, paths["connections"], s, batches)
+    else:
+        eligible = a[(a.status == "Traced") & (a.somaSide == s["side"])
+                     & (a.superclass == "ol_intrinsic")].copy()
+        h = eligible.dropna(subset=["assignedOlHex1", "assignedOlHex2"])
+        dq = h.assignedOlHex1 - s["center"][0]
+        dr = h.assignedOlHex2 - s["center"][1]
+        distance = np.maximum.reduce([abs(dq), abs(dr), abs(dq - dr)])
+        core = h[distance <= s["radius"]].copy()
+        core_ids = core.bodyId.to_numpy()
+        target_types = [f"T{number}{letter}" for number in (4, 5) for letter in "abcd"]
+        candidates = eligible[eligible.type.isin(target_types)]
+        candidate_index = pd.Index(candidates.bodyId)
+        scores = np.zeros(len(candidates), dtype=np.int64)
+        rows_total = 0
+        print("Scanning connections to select T4/T5 targets…", flush=True)
+        for pre, post, weight in batches(paths["connections"]):
+            if (weight <= 0).any():
+                raise ValueError("Non-positive anatomical connection weight")
+            rows_total += len(pre)
+            mask = np.isin(pre, core_ids)
+            indices = candidate_index.get_indexer(post[mask])
+            valid = indices >= 0
+            np.add.at(scores, indices[valid], weight[mask][valid])
+        candidates = candidates.assign(input_synapses=scores)
+        downstream = (candidates[candidates.input_synapses > 0]
+                      .sort_values(["input_synapses", "bodyId"], ascending=[False, True])
+                      .groupby("type", sort=True).head(s["downstream_per_type"]))
+        neurons = pd.concat([core, downstream]).sort_values("bodyId").reset_index(drop=True)
     neurons = neurons.merge(nt, left_on="bodyId", right_on="body", how="left",
                             validate="one_to_one", indicator="nt_join")
     neurons["nt_sign"] = neurons.consensus_nt.map(SIGNS).fillna(0).astype(np.int8)
-    neurons["is_input"] = neurons.type.isin(s["input_types"])
+    neurons["is_input"] = (neurons.type.isin(s["input_types"]) & neurons.assignedOlHex1.notna() & neurons.assignedOlHex2.notna())
     if len(neurons) == 0 or not neurons.is_input.any():
         raise ValueError("Selection has no input neurons")
-    neurons["population"] = neurons.type.astype(str) + "_" + s["side"]
+    neurons["population"] = neurons.type.astype(str) + "_" + neurons.somaSide.fillna("unknown").astype(str)
     neurons["index"] = np.arange(len(neurons))
     index = pd.Index(neurons.bodyId)
     kept, incoming, outgoing = [], 0, 0

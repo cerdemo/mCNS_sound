@@ -67,10 +67,16 @@ class Camera:
 
     def _capture(self):
         try:
+            failed_reads = 0
             while not self.stop.is_set():
                 ok, frame = self.capture.read()
                 if not ok:
-                    raise RuntimeError("Camera stopped returning frames")
+                    failed_reads += 1
+                    if failed_reads >= 5:
+                        raise RuntimeError("Camera stopped returning frames")
+                    self.stop.wait(.05)
+                    continue
+                failed_reads = 0
                 if self.mirror:
                     frame = self.cv2.flip(frame, 1)
                 stamp = time.monotonic()

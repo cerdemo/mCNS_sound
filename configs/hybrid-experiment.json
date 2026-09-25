@@ -1,0 +1,11 @@
+{
+  "visual_bias": 0.5,
+  "visual_coupling": 0.8,
+  "tau_visual_ms": 50.0,
+  "release_equivalent_hz": 100.0,
+  "input_dark_level": 1.0,
+  "input_contrast": 0.8,
+  "status": "untrained, uncalibrated experimental hypothesis; not the live model",
+  "reference": "https://doi.org/10.1038/s41586-024-07939-3",
+  "limits": "Graded-vs-spiking assignment by superclass is approximate. Row scaling, release conversion and uniform visual parameters are assumptions; no trained Flyvis parameters are used."
+}

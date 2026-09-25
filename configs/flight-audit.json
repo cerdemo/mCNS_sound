@@ -1,0 +1,95 @@
+{
+  "selection": {
+    "side": "both",
+    "center": [
+      18,
+      19
+    ],
+    "radius": 4,
+    "input_types": [
+      "L1",
+      "L2"
+    ],
+    "downstream_per_type": 24,
+    "mode": "bilateral",
+    "upstream_per_cell": 6,
+    "seed_types": [
+      "LC4",
+      "LPLC2",
+      "DNp01",
+      "DNp02",
+      "DNp04",
+      "DNp11",
+      "DNp07",
+      "DNp10",
+      "DNa02",
+      "DNp15",
+      "DNp20",
+      "DNp22",
+      "H1",
+      "H2",
+      "HSN",
+      "HSE",
+      "HSS",
+      "VS",
+      "VST1",
+      "VST2"
+    ],
+    "seed_prefixes": [
+      "DNg02_"
+    ],
+    "wide_input_types": [
+      "DNa02",
+      "DNp15",
+      "DNp20",
+      "DNp22",
+      "H1",
+      "H2",
+      "HSN",
+      "HSE",
+      "HSS",
+      "VS",
+      "VST1",
+      "VST2"
+    ],
+    "upstream_per_seed": 32
+  },
+  "model": {
+    "dt_ms": 1.0,
+    "tau_membrane_ms": 20.0,
+    "tau_synapse_ms": 5.0,
+    "refractory_ms": 2.0,
+    "delay_ms": 2.0,
+    "synapse_gain": 0.04,
+    "input_baseline": 0.15,
+    "input_gain": 2.0
+  },
+  "behavior": {
+    "motion_scale": 0.5,
+    "motion_deadband": 0.025,
+    "smoothing_seconds": 0.12,
+    "trigger_threshold": 0.22,
+    "quiet_threshold": 0.1,
+    "trigger_hold_seconds": 0.1,
+    "escape_seconds": 0.6,
+    "hide_quiet_seconds": 3.0,
+    "recover_seconds": 1.5,
+    "wing_base_hz": 190.0,
+    "wing_range_hz": 40.0
+  },
+  "runtime": {
+    "frame_hz": 30.0,
+    "osc_hz": 20.0,
+    "normalization_hz": 100.0,
+    "max_lag_seconds": 0.25,
+    "camera_stale_seconds": 1.0,
+    "host": "127.0.0.1",
+    "port": 9000
+  },
+  "embodiment": {
+    "enabled": true,
+    "radius": 0.24,
+    "overlap": 0.16,
+    "object_hz": 8
+  }
+}
