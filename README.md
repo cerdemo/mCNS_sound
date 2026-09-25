@@ -1,205 +1,205 @@
-# MaleCNS browser widget → ses + OSC
+# MaleCNS browser widget → sound + OSC
 
-Kamera veya kontrollü görüntü → MaleCNS bağlantıları üzerinde sürekli LIF simülasyonu → OSC.
-Max/MSP patch'i bu projenin kapsamı dışında. Varsayılan hedef `127.0.0.1:9000`.
+Camera or controlled image → continuous LIF simulation on MaleCNS connections → OSC.
+The Max/MSP patch is outside this project's scope. The default target is `127.0.0.1:9000`.
 
-## İki gözlü browser widget (varsayılan)
+## Binocular browser widget (default)
 
 ```sh
 source .mcns/bin/activate
 python -m mcns serve
 ```
 
-[Widget’ı açın](http://127.0.0.1:8765), **Başlat**, ardından **Sesi aç** düğmelerini kullanın.
-Varsayılan grafik `build/bilateral-v1`, config `configs/bilateral.json`.
-Kamera numarası ve kontrollü görüntü kaynağı tarayıcıdan seçilir. Durdur kamerayı ve
-simülasyonu kapatır; sunucu açık kalır. Terminalde Ctrl-C sunucuyu kapatır.
-OSC `127.0.0.1:9000` hedefine devam eder. Kamera görüntüleri dışarı gönderilmez/diske kaydedilmez.
+[Open the widget](http://127.0.0.1:8765), then use **Start** and **Turn sound on**.
+The default graph is `build/bilateral-v1`, config `configs/bilateral.json`.
+The camera index and the controlled image source are chosen in the browser. Stop closes the camera and
+the simulation; the server stays up. Ctrl-C in the terminal shuts the server down.
+OSC continues to `127.0.0.1:9000`. Camera frames are not sent out or saved to disk.
 
-### Gerçek devre ile simülasyon varsayımları
+### Simulation assumptions versus the real circuit
 
-**8.440 gerçek hücre, 278.080 anatomik bağlantı** (277.784 etkin işaretli bağlantı).
-Sol ve sağ optik kolonlar, T4/T5 örneklemi, LC4/LPLC2, seçili DN hücreleri ve bunların
-iki katman gerçek upstream ortakları birlikte simüle edilir. Aynalanmış/sentetik nöron eklenmez.
-Devre tam CNS değildir; grafik seçimi ve kesilen bağlantılar `manifest.json` içindedir.
+**8,440 real cells, 278,080 anatomical connections** (277,784 signed connections with a nonzero effect).
+The left and right optic columns, a T4/T5 sample, LC4/LPLC2, selected DN cells, and their
+two-layer real upstream partners are simulated together. No mirrored or synthetic neurons are added.
+The circuit is not the full CNS; graph selection and severed connections are recorded in `manifest.json`.
 
-- Sineğin tarayıcıdaki konum/yönü Python’a geri gelir. Kamera görüntüsü bu poza göre
-  iki **yerel, düzlemsel sanal göz** görüntüsüne örneklenir. Ortada yapay kör boşluk yoktur;
-  ön görüşte örtüşme vardır. Tek kamera stereo/360° görüntü sağlayamaz. Yön, ölçek ve
-  göz projeksiyonu kalibre edilmemiştir; gerçek bileşik göz optiği iddiası taşımaz.
-- Giriş yalnızca gerçek sol/sağ **L1/L2** hücrelerine verilir. Fotoreseptör ve
-  reseptör/fizyoloji ayrıntıları henüz modellenmez. Sol tarafta bazı hücre tiplerinin
-  kolon anotasyonları eksiktir; sağ tarafın haritası sol diye kopyalanmaz.
-- DNp01/02/04/11 hücrelerinin yumuşatılmış, bazal düzey üzerindeki aktivitesi hızlanma/kalkış
-  okumasına; DNa02 sağ-sol aktivite farkı dönüşe bağlanır. DNp07/10 aktivitesi ölçülür,
-  henüz konma kontrolünde kullanılmaz. Bu çıkış eşlemesi biyolojik motor kas simülasyonu değildir.
-- **İnsan hareket etti → kaç**, **üç saniye bekle → geri çık** kuralları bu sürümde yoktur.
-  Küçük temel keşif hızı/yön gürültüsü, ekran sınırı ve nesne teması hâlâ modellenmiş fizik
-  varsayımlarıdır. `escaping` widget OSC modu deneysel DN hızlanmasını ifade eder; doğrulanmış korku değildir.
-- Konma, algılanan nesnenin kutusunun üst kenarıyla geometrik karşılaşmadır. Sinek kutuyla
-  birlikte taşınır ve yürür. Kutu bir 3B yüzey/segmentasyon maskesi değildir; hatalı algılama
-  ve perspektif yüzünden havada konma görülebilir. Nesne kaybolunca uçuşa geçilir.
-- Ortalama giriş dışı kolon aktivitesi hız ve tınıyı etkiler; yürürken uçuş sesi susar.
-  Ses tarayıcıda harmonikli osilatör, filtre, frekans modülasyonu ve stereo pan ile üretilir.
-- **A/B: bağlantıları kapat** gerçek sinaptik matrisi sıfırlar; aynı kamera girdisi ve
-  L1/L2 sürüşü kalır. Sinaptik durum doğal olarak sönümlenir. Temel keşif fiziği sürer.
+- The fly's position and heading in the browser are sent back to Python. The camera image is sampled,
+  from that pose, into two **local, planar virtual-eye** images. There is no artificial blind gap in the middle;
+  the frontal views overlap. A single camera cannot provide stereo or 360° imagery. Heading, scale, and
+  eye projection are not calibrated; this does not claim to be real compound-eye optics.
+- Input is delivered only to real left/right **L1/L2** cells. Photoreceptors and
+  receptor/physiology detail are not modeled yet. Some cell types on the left lack
+  column annotations; the right-side map is not copied over as the left.
+- Smoothed activity of DNp01/02/04/11 above baseline is mapped to the acceleration/takeoff
+  readout; the right-minus-left activity difference of DNa02 is mapped to turning. DNp07/10 activity is measured
+  and is not yet used in landing control. This output mapping is not a biological motor-muscle simulation.
+- The rules **a person moves → flee** and **wait three seconds → come back out** are absent in this version.
+  A small baseline exploration speed, heading noise, screen bounds, and object contact are still modeled physics
+  assumptions. The `escaping` widget OSC mode means experimental DN acceleration; it is not validated fear.
+- Landing is a geometric encounter with the top edge of a detected object's box. The fly is carried
+  with the box and walks. The box is not a 3D surface or a segmentation mask; false detections
+  and perspective can produce landing in mid-air. When the object disappears, the fly takes off.
+- Mean column activity outside the input affects speed and timbre; the flight sound is silent while walking.
+  Sound is synthesized in the browser with a harmonic oscillator, a filter, frequency modulation, and stereo pan.
+- **A/B: disconnect wiring** zeros the real synaptic matrix; the same camera input and
+  L1/L2 drive remain. Synaptic state decays naturally. Baseline exploration physics continues.
 
-### Nesneler ve birden fazla insan
+### Objects and multiple people
 
-Yerel **MediaPipe EfficientDet-Lite0** nesne algılar (COCO sınıfları, eşik 0.4, en çok 20 kutu,
-hedef 8 Hz). Her kişi ayrı `person #id` olarak izlenir. Sınıf ve hareket kestirimli konum
-ataması kullanılır; bu kimlik tanıma değildir. Kapanma/kesişme veya 0.8 saniyelik kayıpta
-ID değişebilir. MediaPipe aynı zamanda en çok 4 yüz/6 el çıkarır; eski OSC el/yüz kanalları
-uyumluluk için birer özet tutar, `tracking.jsonl` ek yüz/el listesini içerir.
+Local **MediaPipe EfficientDet-Lite0** detects objects (COCO classes, threshold 0.4, at most 20 boxes,
+target 8 Hz). Each person is tracked as a separate `person #id`. Assignment uses class and a motion-estimated
+position; this is not identity recognition. IDs can change on occlusion or intersection, or after a 0.8 s loss.
+MediaPipe also returns at most 4 faces and 6 hands; the legacy OSC hand/face channels
+keep one summary each for compatibility, and `tracking.jsonl` contains the extra face and hand lists.
 
-**Nesneleri ve yönü göster** kutuları açar; iki gözün gerçek girdisi hemen altta görünür.
-Nesne sınıfları ve kişi etiketleri nöral ağa enjekte edilmez. Nesne kutuları temas fiziğine,
-pikseller görsel nöral girdiye gider. Yoğun optik akış ayrıca ölçülür, korku tetikleyicisi değildir.
-Tek etkin widget sekmesi kullanın. Tarayıcı telemetrisi 1 saniye eskirse widget OSC sesi sıfırlanır.
-Arka plandaki sekmede yerel ses susar; ses düğmesi/seviyesi OSC davranış kazancını değiştirmez.
+**Show objects and heading** turns the boxes on; the real input to the two eyes appears just below.
+Object classes and person labels are not injected into the neural network. Object boxes go to contact physics;
+pixels go to visual neural input. Dense optical flow is also measured and is not a fear trigger.
+Use a single active widget tab. If browser telemetry is older than 1 second, the widget OSC sound is zeroed.
+In a background tab the local sound goes silent; the sound button and level do not change the OSC behavior gain.
 
-### Doğrulama sonucu ve açık sınır
+### Validation result and open limits
 
-`python scripts/validate_bilateral.py` sabit, yaklaşan, uzaklaşan ve yatay hareket eden
-kontrollü uyaranları aynı pozdan karşılaştırır; bağlantısız kontrol de çalışır.
-Sonuç `build/bilateral-v1/validation.json` dosyasındadır. Mevcut tek tip LIF ile **yaklaşma
-seçiciliği doğrulanmadı**: uzaklaşan uyaranın DN yanıtı yaklaşandan daha büyüktü.
-Bağlantısız ağda DN yanıtı sıfırdır. Bu, bağlantısal nedenselliği destekler; doğal kaçış
-veya biyolojik doğruluk kanıtı değildir. UI bu sınırı görünür tutar.
+`python scripts/validate_bilateral.py` compares stationary, approaching, receding, and horizontally moving
+controlled stimuli from the same pose; a disconnected control also runs.
+The result is in `build/bilateral-v1/validation.json`. With the current uniform LIF, **looming
+selectivity was not validated**: the DN response to a receding stimulus was larger than to an approaching one.
+In the disconnected network the DN response is zero. That supports a connectional cause; it is not evidence of
+natural escape or biological accuracy. The UI keeps this limit visible.
 
-Sonraki bilimsel gereksinimler: hücre tipine özgü zamansal/graded dinamikler, giriş
-polaritesi ve adaptasyon, retinotopik kalibrasyon, eksik upstream yolların denetimi ve
-sabit/çeviri/yaklaşma/uzaklaşma uyaranlarında seçicilik doğrulaması. Bunları gerçek bağlantı
-sayısını artırmanın otomatik olarak çözdüğü varsayılmaz.
+Next scientific requirements: cell-type-specific temporal and graded dynamics, input
+polarity and adaptation, retinotopic calibration, an audit of missing upstream pathways, and
+selectivity checks on stationary, translating, approaching, and receding stimuli. Increasing the real connection
+count is not assumed to solve these automatically.
 
-Yeni kurulumda:
+On a fresh install:
 
 ```sh
 python scripts/download_models.py
 python -m mcns prepare --config configs/bilateral.json --graph build/bilateral-v1
 ```
 
-Mevcut grafik klasörü doluysa üzerine yazılmaz; başka `--graph` yolu seçin.
-Eski davranışlı prototipi karşılaştırmak için:
+If the existing graph directory is already populated it is not overwritten; choose another `--graph` path.
+To compare the older behavioral prototype:
 `python -m mcns serve --graph build/visual-v1 --config configs/default.json`.
 
 Widget OSC: `/mcns/widget/flight sequence:int mode:string gain:float wing_hz:float speed:float x:float y:float activity:float`.
 DN OSC: `/mcns/descending sequence:int escape_drive:float turn_drive:float landing_drive:float`.
-`escape_drive/landing_drive` 0..1, `turn_drive` −1..1; bunlar açık decoder parametreleridir.
-Eski `/mcns/flight` yalnızca eski `--behavior` sürümünde gönderilir. Popülasyon sayısı artık
-682’dir; Max eşlemesi `/mcns/population` metadata’sını izlemelidir.
+`escape_drive` and `landing_drive` are 0..1, `turn_drive` is −1..1; these are explicit decoder parameters.
+The legacy `/mcns/flight` address is sent only in the older `--behavior` version. The population count is now
+682; a Max mapping should follow the `/mcns/population` metadata.
 
-## Komut satırı ile süreli koşular
+## Timed runs from the command line
 
-Komutları proje klasöründe çalıştırın. Mevcut `.mcns` ortamı hazırlanmıştır.
+Run commands in the project folder. The existing `.mcns` environment is already set up.
 
 ```sh
 source .mcns/bin/activate
 python -m mcns run --source bar --duration 60
 ```
 
-Kamera, el ve kafa takibiyle:
+With camera, hand, and head tracking:
 
 ```sh
 python -m mcns run --source camera --track --duration 600
 ```
 
-Canlı nöral aktivite haritasını da açmak için:
+To also open the live neural activity map:
 
 ```sh
 python -m mcns run --source camera --behavior --dashboard --duration 600
 ```
 
-Tarayıcıda [127.0.0.1:8765](http://127.0.0.1:8765) açın. Sayfa yerel bilgisayara
-bağlıdır; dışarıya yayın yapılmaz. Portu `--dashboard-port 8766` ile değiştirebilirsiniz.
-Kamera olmadan denemek için `--source bar --dashboard` kullanın.
+Open [127.0.0.1:8765](http://127.0.0.1:8765) in the browser. The page is bound to the local computer
+and is not published outward. Change the port with `--dashboard-port 8766`.
+To try it without a camera, use `--source bar --dashboard`.
 
-Aşağıdaki sabit sayılar eski `visual-v1` grafiğine aittir; yeni grafikte UI metadata’yı kullanır.
+The fixed counts below belong to the older `visual-v1` graph; the new graph uses UI metadata.
 
-- **Anatomik soma konumları:** anotasyonda konumu olan 862 hücrenin XY/XZ/YZ izdüşümü.
-- **Görsel kolonlar:** koordinatı atanmış 915 hücrenin 61 kolondaki ortalama aktivitesi.
-- **Popülasyon çubukları:** tüm 1.107 hücre, konum anotasyonu olmayanlar dahil.
-- **Zaman grafiği:** giriş ve diğer hücrelerin ayrı ortalama ateşleme hızları.
+- **Anatomical soma positions:** XY, XZ, and YZ projections of the 862 cells that have a position in the annotation.
+- **Visual columns:** mean activity of the 915 cells with assigned coordinates, across 61 columns.
+- **Population bars:** all 1,107 cells, including those without a position annotation.
+- **Time plot:** separate mean firing rates of input cells and the other cells.
 
-Hücre tipi filtresi, Hz renk ölçeği ve hücre ayrıntıları bulunur. Renk son OSC
-penceresindeki spike/nöron/saniye değeridir. Tek hücre için 50 ms pencerede bir spike
-20 Hz demektir; görüntüde yanıp sönme normaldir. Kolon görünümünde üst üste gelen
-hücreler ortalanır. T4/T5 için eksik kolon konumu uydurulmaz.
-Bu görünüm, tüm beynin neuropil/ROI aktivite haritası değildir. Soma bir hücrenin
-gövdesidir; sinapslarının bulunduğu bölgeyi göstermez. Bölgesel sinaps aktivitesini
-göstermek için ek ROI/sinaps konum verisi gerekir.
+There is a cell-type filter, an Hz color scale, and cell details. Color is the spikes per neuron per second
+in the latest OSC window. For a single cell, one spike in a 50 ms window
+is 20 Hz; flicker in the display is expected. In the column view, overlapping
+cells are averaged. Missing column positions for T4/T5 are not invented.
+This view is not a neuropil or ROI activity map of the whole brain. A soma is a cell's
+body; it does not show the region where its synapses lie. Showing regional synapse activity
+requires additional ROI or synapse location data.
 
-Görünümü dondurmak yalnızca tarayıcıyı etkiler. `run --dashboard` kapanınca sayfa
-"Bağlantı kesildi" diyerek son görüntüyü tutar. `serve` sunucusu ise açık kalır ve yeniden başlatılabilir.
-Sunucu en yeni ölçümü, tarayıcı yalnızca son 20 saniyeyi saklar. Kamera önizlemesi
-ve 128×128 nöral giriş görüntüsü yalnızca localhost üzerinden tarayıcıya aktarılır.
-Önizlemedeki el/yüz işaretleri çıkarım yapılan kareye çizilir; yaşları UI'de gösterilir.
-Görüntüler diske kaydedilmez.
+Freezing the view affects only the browser. When `run --dashboard` exits, the page
+says "Connection lost" and keeps the last image. The `serve` server stays up and can be started again.
+The server keeps the newest measurement; the browser stores only the last 20 seconds. The camera preview
+and the 128×128 neural input image are streamed to the browser over localhost only.
+Hand and face marks in the preview are drawn on the frame that was inferred; their ages are shown in the UI.
+Images are not saved to disk.
 
-## Eski prototip: uçuş / kaçış / saklanma davranışı (iki gözlü sürümde kapalı)
+## Older prototype: flight / escape / hide behavior (off in the binocular version)
 
-`--behavior` el/yüz takibini de açar. Bu, kullanıcının sonradan istediği sahne
-davranışıdır; nöral ağın öğrenilmiş veya ortaya çıkmış korku yanıtı değildir.
-Nöral bağlantılar ve nöral OSC değerleri bu katmandan etkilenmez.
+`--behavior` also turns on hand and face tracking. This is the scene
+behavior requested later; it is not a learned or emergent fear response of the network.
+Neural connections and neural OSC values are unaffected by this layer.
 
-- **flying:** sakinlikte sanal 2B ses konumu dolaşır, uçuş ses kazancı 1'dir.
-- **escaping:** el veya yüz hareketi eşik üzerinde en az 0.1 s kalırsa, konum
-  izlenen kişinin yatay konumunun tersindeki kenara 0.6 s'de çekilir; kazanç söner.
-- **hidden:** uçuş kazancı ve kanat parametresi 0 olur. Yeni hareket sakinlik sayacını sıfırlar.
-- **recovering:** hareket 3 s boyunca düşükse, konum ve kazanç 1.5 s'de geri döner.
-  Bu sırada tekrar hareket olursa yeniden kaçış başlar.
+- **flying:** in calm conditions the virtual 2D sound position wanders, and the flight-sound gain is 1.
+- **escaping:** if hand or face motion stays above threshold for at least 0.1 s, the position
+  is pulled in 0.6 s to the edge opposite the tracked person's horizontal position, and the gain fades.
+- **hidden:** flight gain and the wing parameter become 0. New motion resets the calm counter.
+- **recovering:** if motion stays low for 3 s, position and gain return over 1.5 s.
+  If motion occurs again during that time, escape starts over.
 
-Hareket skoru, takip edilen el/yüz merkezlerinin 2B hızından hesaplanır; sabit insan
-varlığı hareket değildir. Kamera/başka nesne hareketi için ham piksel farkı kullanılmaz.
-Hızlarda 0.025 görüntü birimi/s deadband ve 0.12 s yumuşatma vardır. Başlatma eşiği
-0.22, sakinlik eşiği 0.10'dur; tüm parametreler `configs/default.json → behavior` içindedir.
-Hız eşlemesi kamera görüş alanına bağlı olduğundan kurulum sırasında ayarlanmalıdır.
-Bu sürüm yaklaşmayı, elin kapanmasını veya yakalama niyetini ayrıca sınıflandırmaz.
+The motion score is computed from the 2D speed of tracked hand and face centers; a stationary person
+is not motion. Raw pixel difference is not used for camera or other object motion.
+Speeds have a 0.025 image-unit/s deadband and 0.12 s smoothing. The start threshold
+is 0.22 and the calm threshold is 0.10; all parameters are in `configs/default.json → behavior`.
+Because the speed mapping depends on the camera field of view, it should be adjusted during setup.
+This version does not separately classify approach, a closing hand, or an intent to catch.
 
-0.5 s'den eski takip verisi sessizlik üretir ve saklanmadan dönüşü bekletir.
-Güncel çıkarımda insan bulunmaması ise boş sahne kabul edilir; sakinlik sonrası uçuş
-geri gelebilir. Yani **algılama yokluğu** ve **eski/kesilmiş veri** ayrı durumlardır.
+Tracking data older than 0.5 s produces silence and holds the return from hiding.
+Absence of a person in the current inference is treated as an empty scene; after calm, flight
+can return. **No detection** and **stale or dropped data** are separate states.
 
-Sanal konum bir akustik tasarım parametresidir; gerçek 3B sinek fiziği, kamera bakış
-açısı veya insan-sinek mesafesi değildir. `wing_hz` 190–230 Hz arasında seçilmiş ses
-sentez parametresidir; ölçülmüş biyolojik kanat frekansı olarak yorumlanmamalıdır.
+The virtual position is an acoustic design parameter. It is not real 3D fly physics, a camera viewpoint,
+or a human–fly distance. `wing_hz` is a sound-synthesis parameter chosen in the 190–230 Hz range
+and should not be read as a measured biological wingbeat frequency.
 
-Max'e ek mesajlar:
+Additional messages to Max:
 
 - `/mcns/behavior`: `sequence:int state:string motion:float human_present:int tracking_valid:int`.
 - `/mcns/flight`: `sequence:int gain:float wing_hz:float speed:float x:float y:float`.
 
-`gain`, `speed`, `x`, `y` 0–1 aralığındadır; `gain=0` uçuş sesini susturmalıdır.
-Max tarafında bir başlangıç eşlemesi: uçuş sesinin amplitüdünü `gain` ile çarp,
-`wing_hz` ile vızıltı/periyodik modülasyon hızını sür, `x/y` ile ses konumunu kontrol et.
-Ham nöral `/mcns/activity` değerleri tını/rezonansları modüle etmeyi sürdürür.
-Nöral hızlar saklanma sırasında sıfırlanmaz; davranış sesi kısmak için ayrı kapı sağlar.
+`gain`, `speed`, `x`, and `y` are in 0–1; `gain=0` should mute the flight sound.
+A starting mapping on the Max side: multiply the flight-sound amplitude by `gain`,
+drive the buzz or periodic modulation rate with `wing_hz`, and control sound position with `x` and `y`.
+Raw neural `/mcns/activity` values continue to modulate timbre and resonances.
+Neural rates are not zeroed during hiding; the behavior layer provides a separate gate for the sound.
 
-İlk kamera kullanımında macOS kamera izni gerekebilir. Erişim olmazsa Sistem Ayarları →
-Gizlilik ve Güvenlik → Kamera bölümünden komutu çalıştıran uygulamayı kontrol edin.
-`--device 1` başka kamerayı seçer; `--mirror` görüntüyü yatay çevirir (varsayılan kapalı).
-Görüntü kaydedilmez; yerel model çıkarımı yapılır. Diskte yalnızca nöral aktivite,
-performans, davranış ve takip özellikleri tutulur. Kamera önizlemesi dashboard'dadır.
+The first camera use may require a macOS camera permission. If access is denied, check the app that
+runs the command under System Settings → Privacy & Security → Camera.
+`--device 1` selects another camera; `--mirror` flips the image horizontally (off by default).
+The image is not recorded; inference uses a local model. Only neural activity,
+performance, behavior, and tracking features are kept on disk. The camera preview is on the dashboard.
 
-`--track` olmadan da kamera nöral simülasyonu sürer. Takip kanalı nöral girdiyi değiştirmez.
-`--behavior` kapalıyken kaçış/saklanma kuralı çalışmaz. Hiçbir modda ses sentezi yapılmaz.
+The camera still drives the neural simulation without `--track`. The tracking channel does not change the neural input.
+With `--behavior` off, the escape/hide rule does not run. No mode synthesizes sound in Python.
 
-Max olmadan OSC paketlerini görmek için **ayrı terminalde**:
+To see OSC packets without Max, in a **separate terminal**:
 
 ```sh
 source .mcns/bin/activate
 python scripts/osc_monitor.py
 ```
 
-Bu alıcı ile Max aynı UDP portunu eşzamanlı kullanmamalı. Alıcıyı kapatıp Max'i açın.
-Birden çok simülasyonu aynı hedef porta eşzamanlı göndermeyin.
-Farklı hedef: `--host 127.0.0.1 --port 9001`. Ctrl-C durdurur.
+This receiver and Max should not use the same UDP port at the same time. Close the receiver, then open Max.
+Do not send several simulations to the same target port at once.
+A different target: `--host 127.0.0.1 --port 9001`. Ctrl-C stops it.
 
-## Kurulumu yeniden oluşturma
+## Recreating the install
 
-Python 3.9 / Apple Silicon ortamında doğrulanan tam bağımlılıklar `requirements.lock.txt` içinde.
-Doğrudan bağımlılıklar `requirements.txt` içinde. `opencv-python` ile
-`opencv-contrib-python` birlikte kurulmaz; bu ortam yalnızca contrib paketini kullanır.
+Full dependencies verified on Python 3.9 / Apple Silicon are in `requirements.lock.txt`.
+Direct dependencies are in `requirements.txt`. `opencv-python` and
+`opencv-contrib-python` are not installed together; this environment uses only the contrib package.
 
 ```sh
 python3 -m venv .mcns
@@ -208,121 +208,121 @@ python3 -m venv .mcns
 .mcns/bin/python -m mcns prepare
 ```
 
-`data/` altında proje özetindeki üç Feather dosyası bulunmalı. Hazır devre
-`build/visual-v1/` altında oluşturulmuştur. `prepare`, dolu çıktı klasörünün üstüne yazmaz.
-Seçimi değiştirirken config dosyasını kopyalayıp yeni bir çıktı adı kullanın:
+The three Feather files named in the [project summary](MaleCNS_Sonification_Project_Summary.md) must be under `data/`. The prepared circuit
+has been built under `build/visual-v1/`. `prepare` does not overwrite a populated output folder.
+When changing the selection, copy the config and use a new output name:
 
 ```sh
 python -m mcns prepare --config configs/default.json --graph build/visual-v2
 python -m mcns run --graph build/visual-v2 --source bar
 ```
 
-## Görsel devre ve açık varsayımlar
+## Visual circuit and explicit assumptions
 
-Varsayılan devre sağ optik lobda, `status=Traced`, `superclass=ol_intrinsic` hücrelerinden
-seçilir. Kolon merkezi `(18,19)`, yarıçapı 4'tür. Kolon bölgesi
-`max(abs(dq), abs(dr), abs(dq-dr)) <= 4` ile tanımlanır.
-Bu bölgedeki koordinat atanmış tüm tipler ve buradan en çok sinaps alan her T4/T5
-alt tipinden en fazla 24 hücre alınır. Eşitlikte küçük bodyId önce gelir.
-Seçilen hücreler arasındaki tüm anatomik bağlantılar korunur; eşikleme/öğrenme yoktur.
+The default circuit is selected from cells in the right optic lobe with `status=Traced` and `superclass=ol_intrinsic`.
+The column center is `(18,19)` and the radius is 4. The column region
+is defined by `max(abs(dq), abs(dr), abs(dq-dr)) <= 4`.
+All types with assigned coordinates in this region are taken, plus at most 24 cells from each T4/T5
+subtype that receives the most synapses from here. Ties keep the smaller bodyId first.
+All anatomical connections among the selected cells are kept; there is no thresholding or learning.
 
-Mevcut veride 61 kolon, 1.107 nöron, 183 giriş hücresi, 16.700 bağlantı ve 23 popülasyon var.
-Kapsam dışına çıkan bağlantılar kesilir; sayıları ve sinaps toplamları manifestte bulunur.
-Bu kesim dinamiği değiştirir; sonuçlar tüm sineğin davranışı olarak yorumlanamaz.
+The current data has 61 columns, 1,107 neurons, 183 input cells, 16,700 connections, and 23 populations.
+Connections that leave the scope are cut; their counts and synapse totals are in the manifest.
+This cut changes the dynamics; results cannot be read as the behavior of the whole fly.
 
-L1/L2/L3 hücrelerine gri görüntü parlaklığı enjekte edilir. Fotoreseptörler atlanır;
-bu bir fizyolojik retina modeli değildir. L1 ve L2 için ayrıca ON/OFF, hareket algılama
-veya kaçınma/yakalama kuralı eklenmez. Sabit parlaklık da aktivite üretir.
-Hareket seçiciliği biyolojik olarak doğrulanmış değildir.
+Grayscale image brightness is injected into L1, L2, and L3 cells. Photoreceptors are skipped;
+this is not a physiological retina model. No extra ON/OFF, motion-detection,
+or avoidance/capture rule is added for L1 and L2. Constant brightness also produces activity.
+Motion selectivity is not biologically validated.
 
-Kolon koordinatları `x=q-r/2`, `y=sqrt(3)*r/2` ile düzleme taşınıp seçilen bölgenin
-ekran aralığına ölçeklenir. Bu dönüşümün yönü ve kamera görüş alanı bir tasarım
-varsayımıdır; sineğin göz geometrisine kalibre edilmemiştir. Görüntü 128×128 griye
-indirilir ve giriş hücrelerine bilineer örneklenir.
+Column coordinates are mapped to the plane with `x=q-r/2`, `y=sqrt(3)*r/2` and scaled into the screen range
+of the selected region. The orientation of this transform and the camera field of view are a design
+assumption; they are not calibrated to the fly's eye geometry. The image is reduced to 128×128 gray
+and bilinearly sampled onto the input cells.
 
-Nörotransmiter **consensus_nt** alanından asetilkolin +1; GABA, glutamat ve histamin -1
-kabul edilir. Diğer/belirsiz etiketler 0 etkili çıkış üretir. Bu kaba bir varsayımdır;
-reseptöre bağlı işaretler ve nöromodülasyon modellenmez. Bireysel tahmin güveni,
-eksiklikler ve consensus ile anlaşmazlıklar ayrıca raporlanır; düşük güvenli hücrelerin
-sessizce elendiği varsayılmamalı.
+From the neurotransmitter **consensus_nt** field, acetylcholine is taken as +1, and GABA, glutamate, and histamine as −1.
+Other or uncertain labels produce a zero-effect output. This is a coarse assumption;
+receptor-dependent signs and neuromodulation are not modeled. Individual prediction confidence,
+gaps, and disagreements with consensus are reported separately. Low-confidence cells should not be
+assumed to have been dropped silently.
 
-`neurons.feather`: nöron kimliği, popülasyon, anotasyon/NT alanları, giriş bayrağı.
-`edges.feather`: body_pre/body_post, matris indisleri ve ham sinaps sayısı.
-`weights.npz`: seyrek matris, **satır=hedef, sütun=kaynak**, NT işaretli sinaps sayısı.
-`manifest.json`: seçim, eksik veri, kesilen bağlantılar, kaynak ve çıktı SHA-256 değerleri.
-Tam bağlantı tablosu partiler halinde taranır; belleğe bir bütün olarak yüklenmez.
+`neurons.feather`: neuron identity, population, annotation and NT fields, input flag.
+`edges.feather`: body_pre/body_post, matrix indices, and raw synapse count.
+`weights.npz`: sparse matrix, **row = target, column = source**, NT-signed synapse count.
+`manifest.json`: selection, missing data, severed connections, and source and output SHA-256 values.
+The full connection table is scanned in parts; it is not loaded into memory as one piece.
 
-## Dinamik ve zamanlama
+## Dynamics and timing
 
-Boyutsuz LIF: dinlenme/reset=0, eşik=1.
+Dimensionless LIF: rest/reset = 0, threshold = 1.
 
 ```text
-dv/dt = (-v + I_görüntü + g) / tau_m
+dv/dt = (-v + I_image + g) / tau_m
 dg/dt = -g / tau_s
-gecikmiş spike geldiğinde: g_hedef += sinaps_sayısı × NT_işareti × synapse_gain
-I_görüntü = 0.15 + 2.0 × parlaklık  (yalnızca giriş hücrelerinde)
+when a delayed spike arrives: g_target += synapse_count × NT_sign × synapse_gain
+I_image = 0.15 + 2.0 × brightness  (input cells only)
 ```
 
-Varsayılan `dt=1 ms`, `tau_m=20 ms`, `tau_s=5 ms`, refrakter süre 2 ms,
-gecikme 2 ms, sinaps kazancı 0.04. Adım içinde sabit dış girdi ve üstel sinaptik akım
-için analitik entegrasyon kullanılır. Refrakter durumda voltaj reset seviyesinde
-tutulur; sinaptik akım sönmeye devam eder ve spike sonrası sıfırlanmaz.
-Gecikme/refrakter süre en yakın adım sayısına yuvarlanır; etkili değerler run.json'a yazılır.
-Bu, Shiu modelinin birebir portu veya MaleCNS için fizyolojik olarak fit edilmiş model değildir.
+Defaults: `dt=1 ms`, `tau_m=20 ms`, `tau_s=5 ms`, refractory period 2 ms,
+delay 2 ms, synapse gain 0.04. Within a step, analytic integration is used for a constant external drive and an exponential synaptic current.
+In the refractory state, voltage is held at reset;
+synaptic current keeps decaying and is not zeroed after a spike.
+Delay and refractory duration are rounded to the nearest step count; the effective values are written to `run.json`.
+This is not a one-to-one port of the Shiu model, and it is not a physiologically fitted model of MaleCNS.
 
-Kamera tek bir en yeni kareyi saklar. Model her karede sıfırlanmaz.
-Görüntü güncelleme hedefi 30 Hz, OSC 20 Hz; adım yuvarlamasıyla gerçekleşen hızlar run.json'dadır.
-Takip ayrı iş parçacığında çalışır ve en yeni kareyi kullanır. Bir saniyeden eski kamera
-karesi hata ile durdurur. 250 ms'den fazla hesaplama gecikmesinde simülasyon saati
-yavaşlatılır ve kayıp duvar saati raporlanır; eski kareler sıraya alınmaz.
+The camera keeps a single newest frame. The model is not reset on every frame.
+The image-update target is 30 Hz and OSC is 20 Hz; the rates realized after step rounding are in `run.json`.
+Tracking runs on a separate thread and uses the newest frame. A camera
+frame older than one second stops the run with an error. If computation lag exceeds 250 ms, simulation time
+is slowed and the lost wall-clock time is reported; old frames are not queued.
 
-## Max'e OSC sözleşmesi — sürüm 1
+## OSC contract for Max — version 1
 
-OSC 1.0 UDP, varsayılan `127.0.0.1:9000`. Adresler ve argüman sırası:
+OSC 1.0 UDP, default `127.0.0.1:9000`. Addresses and argument order:
 
 - `/mcns/schema`: `version:int` (=1).
 - `/mcns/population`: `index:int name:string neuron_count:int`.
 - `/mcns/rates`: `sequence:int simulation_seconds:float rate0:float rate1:float ...`.
 - `/mcns/activity`: `sequence:int simulation_seconds:float value0:float value1:float ...`.
 - `/mcns/health`: `sequence:int simulation_seconds:float wall_seconds:float frame_age_ms:float rss_mb:float clock_slip_seconds:float overwritten_camera_frames:int`.
-- `/mcns/state`: `completed`, `stopped`, `interrupted` veya `error` metni; kapanışta gönderilir.
+- `/mcns/state`: the text `completed`, `stopped`, `interrupted`, or `error`; sent on shutdown.
 
-`rate`: son OSC penceresindeki spike sayısı / nöron sayısı / pencere süresi, Hz/nöron.
-`activity`: `clip(rate / 100, 0, 1)`; 100 Hz config içindeki `normalization_hz` ile değişir.
-Ham `rates` kırpılmaz. Popülasyon sırası alfabetiktir; her koşunun `run.json` dosyasında
-ve saniyede bir tekrarlanan `/mcns/population` mesajlarında verilir.
-Metadata tekrarları geç açılan bir Max alıcısının eşlemeyi öğrenmesini sağlar.
+`rate`: spike count in the last OSC window / neuron count / window duration, in Hz per neuron.
+`activity`: `clip(rate / 100, 0, 1)`; the 100 Hz scale changes with `normalization_hz` in the config.
+Raw `rates` are not clipped. Population order is alphabetical. It is given in each run's `run.json`
+and in `/mcns/population` messages repeated once per second.
+Repeating the metadata lets a Max receiver that opens late learn the mapping.
 
-Örnek: `/mcns/activity 42 2.15 0.0 0.03 ...`; ilk iki sayı kanal aktivitesi değildir.
-Normal kapanışta son bir sıfır aktivite paketi gönderilir. UDP teslim garantisi taşımaz;
-Max tarafında paket kesildiğinde, örneğin 500 ms sonra sesi söndüren watchdog önerilir.
-Grafik/config değiştirildiğinde popülasyon sayısı değişebilir; sabit 23 kanalı varsaymayın.
+Example: `/mcns/activity 42 2.15 0.0 0.03 ...`; the first two numbers are not channel activity.
+On a normal shutdown, one final zero-activity packet is sent. UDP does not guarantee delivery.
+A watchdog on the Max side that fades the sound after packets stop, for example after 500 ms, is recommended.
+The population count can change when the graph or config changes; do not assume a fixed set of 23 channels.
 
-`--track` açıksa ek ölçüm mesajları:
+If `--track` is on, extra measurement messages:
 
 - `/mcns/tracking/hand`: `frame:int side:string present:int x:float y:float vx:float vy:float openness:float handedness_score:float age_ms:float`.
 - `/mcns/tracking/face`: `frame:int present:int x:float y:float vx:float vy:float width:float age_ms:float`.
 
-`x/y` görüntü koordinatlarıdır (sol/üst 0); `vx/vy` görüntü birimi/saniye.
-El açıklığı, parmak uçlarının bileğe ortalama 2B uzaklığı / avuç uzunluğu oranıdır;
-kalibre edilmiş kavrama ölçüsü değildir. Yüz genişliği görüntü genişliği oranıdır,
-metrik derinlik değildir. `side`, modelin Left/Right etiketidir; ayna seçimiyle birlikte
-kurulumda kontrol edin. İki aynı taraf etiketi gelirse daha yüksek skorlu olan tutulur.
-Takip kaybolduğunda `present=0` ve özellikler sıfır olur; tekrar görünmede hız sıfırdan
-başlar. Bir saniyeden eski takip sonucu da geçersizdir. Bu kanal ayrı bir gözlem
-kanalıdır; nöral aktivite kaynaklı ses istendiğinde `/mcns/activity` kullanılmalıdır.
+`x` and `y` are image coordinates (left and top are 0); `vx` and `vy` are image units per second.
+Hand openness is the mean 2D distance of the fingertips from the wrist, divided by palm length.
+It is not a calibrated grasp measure. Face width is a fraction of image width,
+not a metric depth. `side` is the model's Left/Right label; check it together with the mirror setting
+during setup. If two labels for the same side arrive, the higher-scoring one is kept.
+When tracking is lost, `present=0` and the features become zero; on reappearance, velocity starts
+from zero. A tracking result older than one second is also invalid. This channel is a separate observation
+stream. For sound driven by neural activity, use `/mcns/activity`.
 
-## Kayıt ve test
+## Recording and tests
 
-Her koşu ayrı `runs/<timestamp>/` klasörü üretir:
+Each run produces a separate `runs/<timestamp>/` folder:
 
-- `run.json`: tam config, kullanılan grafiğin kimliği, popülasyon sırası, etkili zamanlama.
-- `activity.csv`: her OSC penceresinde ham popülasyon hızları, bellek ve zamanlama ölçümleri.
-- `tracking.jsonl`: takip açıksa işlenen karelerin hareket özellikleri; görüntü içermez.
-- `behavior.jsonl`: davranış açıksa her OSC penceresinde durum, hareket, kazanç ve uçuş parametreleri.
-- `scene.jsonl`: nesne/kişi kutuları, geçici ID’ler ve ölçüm yaşı; görüntü içermez.
-- `widget.jsonl`: widget/harita açıkken OSC pencerelerinde tarayıcı uçuş durumu ve sonraki pencereye uygulanacak bağlantı A/B bayrağı.
-- `summary.json`: tamamlanma/hata durumu, spike toplamları, sessiz hücre oranı ve performans.
+- `run.json`: full config, identity of the graph used, population order, and effective timing.
+- `activity.csv`: raw population rates, memory, and timing measurements in each OSC window.
+- `tracking.jsonl`: motion features of processed frames when tracking is on; contains no images.
+- `behavior.jsonl`: state, motion, gain, and flight parameters in each OSC window when behavior is on.
+- `scene.jsonl`: object and person boxes, temporary IDs, and measurement age; contains no images.
+- `widget.jsonl`: browser flight state during OSC windows while the widget or map is open, and the connection A/B flag to apply on the next window.
+- `summary.json`: completion or error status, spike totals, silent-cell fraction, and performance.
 
 ```sh
 python -m unittest discover -s tests -v
@@ -333,26 +333,26 @@ python -m mcns run --source static --duration 5 --fast
 python -m mcns run --source bar --duration 600
 ```
 
-`--fast` yalnızca kontrollü uyaranlarda kullanılır; gerçek zaman testi sayılmaz.
-Bellek RSS örnekleri tüm Python sürecini kapsar. `frame_age_ms`, OpenCV'nin kareyi
-teslim ettiği andan OSC yayınına kadar yaşı ölçer; sensör, Max ve ses kartı dahil
-uçtan uca gecikme değildir. Max patch’inin işitsel doğrulaması kullanıcıya aittir; tarayıcı sentezi widget içinde dinlenebilir.
+`--fast` is used only for controlled stimuli and does not count as a real-time test.
+Memory RSS samples cover the whole Python process. `frame_age_ms` measures age from the moment OpenCV
+delivers the frame until the OSC publish. It is not end-to-end latency through the sensor, Max, and the sound card.
+Hearing the Max patch is the user's check; browser synthesis can be heard inside the widget.
 
-## Kaynaklar
+## Sources
 
-25 Eylül dönüş araştırması: [devre kapsamı, deneysel fizyoloji ve test sonuçları](STEERING_AUDIT.md).
-14.206 hücreli araştırma devresi ve hibrit model eklendi; yön seçiciliği testleri
-başarısız olduğu için canlı widget’ın varsayılan modeline geçirilmedi.
+25 September steering study: [circuit coverage, experimental physiology, and test results](STEERING_AUDIT.md).
+A 14,206-cell research circuit and a hybrid model were added. Direction-selectivity tests
+failed, so they were not switched in as the live widget's default model.
 
-- [MaleCNS verisi ve lisansı (CC-BY)](https://male-cns.janelia.org/download/).
-- [Optik kolon koordinatlarının tanımı](https://github.com/reiserlab/male-drosophila-visual-system-connectome-code/blob/main/docs/coordinate-systems.md).
-- [Shiu modelinin referans kodu](https://github.com/philshiu/Drosophila_brain_model/blob/main/model.py).
-- [MediaPipe el takibi](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python) ve [yüz takibi](https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker/python).
+- [MaleCNS data and license (CC-BY)](https://male-cns.janelia.org/download/).
+- [Definition of optic-column coordinates](https://github.com/reiserlab/male-drosophila-visual-system-connectome-code/blob/main/docs/coordinate-systems.md).
+- [Reference code for the Shiu model](https://github.com/philshiu/Drosophila_brain_model/blob/main/model.py).
+- [MediaPipe hand tracking](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python) and [face tracking](https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker/python).
 
-### İki gözlü devre ve algılama kaynakları
+### Binocular circuit and detection sources
 
-- [LC4/DN kaçış yönü araştırması](https://www.nature.com/articles/s41586-022-05562-8).
-- [LPLC2 yaklaşma seçiciliği](https://www.nature.com/articles/nature24626).
-- [Göz geometrisi ve görüş örtüşmesi](https://www.nature.com/articles/s41586-025-09276-5).
-- [DN işlevleri: karşılaştırmalı connectomics](https://www.nature.com/articles/s41586-025-08925-z).
-- [MediaPipe nesne algılama](https://developers.google.com/edge/mediapipe/solutions/vision/object_detector).
+- [LC4/DN escape-direction study](https://www.nature.com/articles/s41586-022-05562-8).
+- [LPLC2 looming selectivity](https://www.nature.com/articles/nature24626).
+- [Eye geometry and visual overlap](https://www.nature.com/articles/s41586-025-09276-5).
+- [DN functions: comparative connectomics](https://www.nature.com/articles/s41586-025-08925-z).
+- [MediaPipe object detection](https://developers.google.com/edge/mediapipe/solutions/vision/object_detector).

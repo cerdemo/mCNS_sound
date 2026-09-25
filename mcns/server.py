@@ -60,7 +60,7 @@ class Controller:
 
 def serve(graph, config, models, port):
     controller = Controller(graph, config, models, port)
-    print("Open the widget and press Başlat. Ctrl-C stops the server.", flush=True)
+    print("Open the widget and press Start. Ctrl-C stops the server.", flush=True)
     try:
         threading.Event().wait()
     except KeyboardInterrupt:

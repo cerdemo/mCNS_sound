@@ -50,14 +50,14 @@
       const response = await fetch('/api/control', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if (!response.ok) throw Error(await response.text());
       return await response.json();
-    } catch (error) {$('widgetError').textContent = 'Kontrol başarısız. Simülasyon durumunu ve kamera erişimini kontrol edin.'; return null;}
+    } catch (error) {$('widgetError').textContent = 'Control failed. Check the simulation status and camera access.'; return null;}
   }
   $('startWidget').onclick = () => control({action:'start',source:$('widgetSource').value,device:+$('cameraDevice').value});
-  $('stopWidget').onclick = () => {buzz.mute(); $('audioToggle').textContent='Sesi aç'; control({action:'stop'});};
+  $('stopWidget').onclick = () => {buzz.mute(); $('audioToggle').textContent='Turn sound on'; control({action:'stop'});};
   $('audioToggle').onclick = async () => {
-    if (buzz.enabled) {buzz.mute(); $('audioToggle').textContent='Sesi aç';}
-    else try {await buzz.enable(); $('audioToggle').textContent='Sesi kapat';}
-    catch(error) {$('widgetError').textContent='Tarayıcı sesi başlatamadı. Ses düğmesine tekrar tıklayın.';}
+    if (buzz.enabled) {buzz.mute(); $('audioToggle').textContent='Turn sound on';}
+    else try {await buzz.enable(); $('audioToggle').textContent='Turn sound off';}
+    catch(error) {$('widgetError').textContent='The browser could not start audio. Click the sound button again.';}
   };
   $('widgetVolume').oninput = event => {buzz.volume = +event.target.value;};
   $('showPerches').onchange = event => {showPerches = event.target.checked;};
@@ -78,20 +78,20 @@
     if(state.embodied && state.status==='running'){
       $('eyeLeft').src='/api/eye-L.jpg?s='+state.sequence; $('eyeRight').src='/api/eye-R.jpg?s='+state.sequence;
       const m=state.motor;
-      $('motorReadout').textContent=m ? 'LC4/LPLC2 sol/sağ: '+m.rates.visual_L.toFixed(1)+' / '+m.rates.visual_R.toFixed(1)+' Hz · Kaçış DN sol/sağ: '+m.rates.escape_L.toFixed(1)+' / '+m.rates.escape_R.toFixed(1)+' Hz · Motor yanıtı '+m.escape_drive.toFixed(2)+' · dönüş '+m.turn_drive.toFixed(2)+' · yaklaşma seçiciliği henüz doğrulanmadı' : 'DN ölçümü bekleniyor';
-      $('sceneReadout').textContent=(state.scene?.objects||[]).map(o=>o.label+' #'+o.id).join(' · ')||'Nesne bekleniyor / algılanmadı';
+      $('motorReadout').textContent=m ? 'LC4/LPLC2 left/right: '+m.rates.visual_L.toFixed(1)+' / '+m.rates.visual_R.toFixed(1)+' Hz · Escape DN left/right: '+m.rates.escape_L.toFixed(1)+' / '+m.rates.escape_R.toFixed(1)+' Hz · Motor response '+m.escape_drive.toFixed(2)+' · turn '+m.turn_drive.toFixed(2)+' · looming selectivity not yet validated' : 'Waiting for the DN measurement';
+      $('sceneReadout').textContent=(state.scene?.objects||[]).map(o=>o.label+' #'+o.id).join(' · ')||'Waiting for an object / none detected';
     }
     if (state.neuron_hz && readout) drive = readout.update(state.neuron_hz);
     if (state.sequence >= 0 && state.status === 'running') scene.src = '/api/scene.jpg?s='+state.sequence;
     recurrence = state.recurrent_enabled !== false;
-    $('toggleRecurrence').textContent = recurrence ? 'A/B: bağlantıları kapat' : 'A/B: bağlantıları aç';
-    $('couplingStatus').textContent = recurrence ? 'Gerçek bağlantılar açık' : 'Bağlantılar kapalı · yalnızca giriş ve keşif';
+    $('toggleRecurrence').textContent = recurrence ? 'A/B: disconnect wiring' : 'A/B: reconnect wiring';
+    $('couplingStatus').textContent = recurrence ? 'Real connections on' : 'Connections off · input and exploration only';
     $('startWidget').disabled = ['running','starting','stopping'].includes(state.status);
     $('stopWidget').disabled = !['running','starting'].includes(state.status);
-    $('neuralDrive').textContent = drive.hz.toFixed(2)+' Hz/nöron';
-    $('neuralLeaders').textContent = drive.leaders.filter(p=>p.hz>0).map(p=>p.name+' '+p.hz.toFixed(1)+' Hz').join(' · ') || 'Giriş dışı aktivite yok';
+    $('neuralDrive').textContent = drive.hz.toFixed(2)+' Hz/neuron';
+    $('neuralLeaders').textContent = drive.leaders.filter(p=>p.hz>0).map(p=>p.name+' '+p.hz.toFixed(1)+' Hz').join(' · ') || 'No activity outside the input';
     if (state.error) $('widgetError').textContent=state.error;
-    if (meta.manifest?.anatomical_edges) $('circuitSize').textContent=meta.neurons.length.toLocaleString('tr')+' hücre · '+meta.manifest.anatomical_edges.toLocaleString('tr')+' gerçek bağlantı';
+    if (meta.manifest?.anatomical_edges) $('circuitSize').textContent=meta.neurons.length.toLocaleString('en')+' cells · '+meta.manifest.anatomical_edges.toLocaleString('en')+' real connections';
   });
 
   scene.onload = () => {
@@ -162,9 +162,9 @@
     const w=Math.min(box.width,box.height*naturalRatio),h=w/naturalRatio;
     drawFly(fly,now/1000,box.width,box.height,{x:(box.width-w)/2,y:(box.height-h)/2,w,h});
     buzz.update(fly,drive,connected);
-    const labels={flying:'Uçuyor',walking:'Yürüyor',escaping:telemetry?.embodied?'DN yanıtı · hızlanma':'Kaçıyor',hidden:'Saklanıyor',offline:'Durduruldu'};
+    const labels={flying:'Flying',walking:'Walking',escaping:telemetry?.embodied?'DN response · acceleration':'Escaping',hidden:'Hidden',offline:'Stopped'};
     $('flyMode').textContent=labels[fly.mode];
-    $('flightReadout').textContent=fly.wing_hz.toFixed(0)+' Hz · ses kapısı '+fly.gain.toFixed(2);
+    $('flightReadout').textContent=fly.wing_hz.toFixed(0)+' Hz · sound gate '+fly.gain.toFixed(2);
     if(connected && now-lastPost>=50 && !sending){
       lastPost=now;sending=true;
       fetch('/api/widget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...fly,run_id:runId})})
