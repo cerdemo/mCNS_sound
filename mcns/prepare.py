@@ -86,7 +86,9 @@ def prepare(data_dir, output, config):
     neurons["is_input"] = (neurons.type.isin(s["input_types"]) & neurons.assignedOlHex1.notna() & neurons.assignedOlHex2.notna())
     if len(neurons) == 0 or not neurons.is_input.any():
         raise ValueError("Selection has no input neurons")
-    neurons["population"] = neurons.type.astype(str) + "_" + neurons.somaSide.fillna("unknown").astype(str)
+    neurons['is_auditory_input'] = (neurons.get('subclass', pd.Series('', index=neurons.index)).eq('auditory') &
+        neurons.type.fillna('').str.startswith(('JO-A', 'JO-B')) & neurons.get('rootSide', pd.Series('', index=neurons.index)).isin(['L', 'R']))
+    neurons["population"] = neurons.type.astype(str) + "_" + neurons.somaSide.fillna(neurons.get('rootSide', pd.Series('unknown', index=neurons.index))).fillna("unknown").astype(str)
     neurons["index"] = np.arange(len(neurons))
     index = pd.Index(neurons.bodyId)
     kept, incoming, outgoing = [], 0, 0
@@ -123,7 +125,8 @@ def prepare(data_dir, output, config):
         "dataset": "male-cns:v1.0", "selection": s, "nt_sign_hypothesis": SIGNS,
         "unmodelled_nt_sign": 0, "annotation_rows": len(a), "nt_rows": len(nt),
         "connection_rows_scanned": rows_total, "neurons": len(neurons),
-        "input_neurons": int(neurons.is_input.sum()), "anatomical_edges": len(edges),
+        "input_neurons": int(neurons.is_input.sum()),
+        "auditory_input_neurons": int(neurons.is_auditory_input.sum()), "anatomical_edges": len(edges),
         "effective_edges": int(matrix.nnz), "duplicate_pairs_aggregated": duplicates,
         "cut_incoming_edges": incoming, "cut_outgoing_edges": outgoing,
         "cut_incoming_synapses": incoming_weight, "cut_outgoing_synapses": outgoing_weight,
@@ -140,11 +143,13 @@ def prepare(data_dir, output, config):
                     for k, p in paths.items()},
         "artifacts": {name: sha256(output / name) for name in
                       ["neurons.feather", "edges.feather", "weights.npz"]},
-        "limitations": ["Truncated right/left optic-lobe circuit, not a whole CNS model.",
+        "limitations": ["Selected visual/auditory subgraph, not a whole CNS model.",
                         "L1/L2/L3 luminance injection bypasses photoreceptors.",
                         "Hex-to-camera projection is uncalibrated and arbitrary in orientation.",
                         "NT signs use consensus labels; receptor effects and modulators omitted."],
     }
+    if s.get('auditory'):
+        report['limitations'].append('JO-A/B audio-envelope injection is uncalibrated; mono input, no directional hearing.')
     (output / "manifest.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({k: report[k] for k in ["neurons", "input_neurons", "anatomical_edges",
                                             "effective_edges", "unmodelled_nt_neurons"]}, indent=2))

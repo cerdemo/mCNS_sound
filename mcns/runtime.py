@@ -12,14 +12,20 @@ from scipy import sparse
 
 from .model import LIF
 from .osc import Output
+from .sensors import LimbSensors
+from .audio import AuditoryInput
 from .prepare import sha256
-from .vision import Camera, ImageInput, grayscale, stimulus
+from .vision import Camera, VideoFile, ImageInput, grayscale, stimulus
 from . import __version__
 
 
-def run(graph, config, source, duration, output, realtime=True, device=0, mirror=False,
+def run(graph, config, source, duration, output, realtime=True, device=0, mirror=True,
         track=False, models="models", dashboard_port=None, behavior=False,
-        dashboard_instance=None, stop_event=None):
+        dashboard_instance=None, stop_event=None, video_path=None, video_loop=True, audio_track=None):
+    if source == 'video' and (not video_path or not realtime):
+        raise ValueError('Video requires a local file and real-time playback')
+    if source != 'camera':
+        mirror = False
     graph, output = Path(graph), Path(output)
     if output.exists() and any(output.iterdir()):
         raise ValueError("Run output is not empty; choose a new --output directory")
@@ -36,7 +42,7 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
         from .retina import BinocularInput
         from .readout import DescendingReadout
         mapper = BinocularInput(neurons, config["model"], config["embodiment"])
-        descending = DescendingReadout(neurons)
+        descending = DescendingReadout(neurons, config['embodiment'].get('decoder'))
         behavior = False
     else:
         mapper = ImageInput(neurons, config["model"])
@@ -58,6 +64,7 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
         "environment_lock_sha256": sha256("requirements.lock.txt") if Path("requirements.lock.txt").exists() else None,
         "config": config, "source": source, "duration_requested_seconds": duration,
         "realtime": realtime, "camera_device": device, "mirror": mirror,
+        "video_file": Path(video_path).name if video_path else None, "video_loop": video_loop,
         "tracking_enabled": track,
         "dashboard_port": dashboard_port,
         "behavior_enabled": behavior,
@@ -97,12 +104,18 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
     last_preview_seq = -1
     preview_stamp = None
     last_preview_time = -1.
+    limb_sensors = LimbSensors()
+    sensor_frame = None
+    sensor_frame_id = -1
+    sensor_frame_stamp = None
     if behavior:
-        if not track or source != "camera":
-            raise ValueError("Behavior requires camera input and tracking")
+        if not track or source not in ("camera", "video"):
+            raise ValueError("Behavior requires camera/video input and tracking")
         from .behavior import FlyBehavior
         fly = FlyBehavior(config["behavior"])
-    input_mask = neurons.is_input.to_numpy()
+    auditory = AuditoryInput(neurons, config.get('auditory'))
+    audio_rms, audio_valid = 0., False
+    input_mask = neurons.is_input.to_numpy() | auditory.mask
     print(f"{engine.n} neurons / {len(populations)} populations → "
           f"OSC {runtime['host']}:{runtime['port']} ({source})", flush=True)
     try:
@@ -110,13 +123,13 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
         if dashboard_port is not None:
             from .dashboard import Dashboard
             dashboard = Dashboard(neurons, populations, dashboard_port)
-        if source == "camera":
-            camera = Camera(device, mirror)
+        if source in ("camera", "video"):
+            camera = Camera(device, mirror) if source == "camera" else VideoFile(video_path, video_loop)
             # Do not advance the network until the first real image is available.
             deadline = time.monotonic() + 5
             while camera.get() is None:
                 if time.monotonic() >= deadline:
-                    raise RuntimeError("No camera frame within five seconds")
+                    raise RuntimeError("No source frame within five seconds")
                 time.sleep(.01)
             if embodied:
                 from .scene import SceneTracker
@@ -141,6 +154,8 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                 if stop_event is not None and stop_event.is_set():
                     reason = "stopped"
                     break
+                if source == 'video' and camera.ended.is_set():
+                    break
                 compute_start = time.monotonic()
                 if engine.tick % frame_steps == 0:
                     pose = None
@@ -153,11 +168,15 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                         frame_age = time.monotonic() - stamp
                         if frame_age > runtime["camera_stale_seconds"]:
                             raise RuntimeError("Stale camera image; stopping instead of replaying old input")
+                        if source == 'video':
+                            sensor_frame_stamp = stamp
                         if seq != last_frame_seq:
                             overwritten += max(0, seq - last_frame_seq - 1)
                             last_frame_seq, frame_stamp = seq, stamp
                             gray = grayscale(frame)
-                            current = mapper.current(gray, pose) if embodied else mapper.current(gray)
+                            sensor_frame, sensor_frame_id, sensor_frame_stamp = frame, seq, stamp
+                            if not embodied:
+                                current = mapper.current(gray)
                             frames += 1
                             if dashboard and time.monotonic() - last_preview_time >= .1:
                                 from .preview import encode_preview
@@ -167,8 +186,12 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                                     dashboard.set_image("camera", encode_preview(frame))
                                     preview_stamp = stamp
                                 last_preview_time = time.monotonic()
+                        if embodied:
+                            current = mapper.current(gray, pose)
                     else:
                         gray = stimulus(source, engine.tick * dt)
+                        sensor_frame = (gray*255).astype(np.uint8)
+                        sensor_frame_id, sensor_frame_stamp = frames, time.monotonic()
                         current = mapper.current(gray, pose) if embodied else mapper.current(gray)
                         frames += 1
                         if dashboard and time.monotonic()-last_preview_time >= .1:
@@ -181,6 +204,15 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                         from .preview import encode_preview
                         for side, eye in mapper.eyes.items():
                             dashboard.set_image("eye-"+side, encode_preview((eye*255).astype(np.uint8)))
+                    audio_rms, audio_valid = 0., False
+                    if source == 'video' and audio_track is not None:
+                        audio_rms, audio_valid = audio_track.level(camera.position_s), True
+                    elif source == 'camera' and dashboard:
+                        sample = dashboard.get_audio()
+                        if sample and time.monotonic()-sample[0] < .25:
+                            audio_rms, audio_valid = sample[1], True
+                    # Replaces only sensory injection; all downstream effects use real edges.
+                    current[auditory.mask] = auditory.current(audio_rms) if audio_valid else 0.
                 spiked = engine.step(current)
                 total_spikes += spiked
                 neuron_counts += spiked
@@ -196,6 +228,9 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                     max_rss = max(max_rss, rss)
                     sim_s = engine.tick * dt
                     osc.activity(sequence, sim_s, rates, normalized)
+                    osc.send('/mcns/auditory', sequence, int(audio_valid), float(audio_rms),
+                             auditory.current(audio_rms) if audio_valid else 0.,
+                             float((neuron_counts[auditory.mask]/window).mean()) if auditory.mask.any() else 0.)
                     snapshot = None
                     fly_state = None
                     if tracker:
@@ -229,12 +264,19 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                     motor = descending.update(neuron_counts/window, window) if embodied else None
                     if motor:
                         osc.send("/mcns/descending", sequence, motor["escape_drive"], motor["turn_drive"], motor["landing_drive"])
+                        osc.send('/mcns/motor', sequence, motor['locomotion_drive'], motor['turn_dn'],
+                                 motor['turn_network'], motor['probe_left'], motor['probe_right'])
                     if dashboard:
                         recurrent_enabled, widget = dashboard.get_controls()
                         engine.weights = original_weights if recurrent_enabled else zero_weights
+                        limbs, contacts = limb_sensors.update(sensor_frame, sensor_frame_id,
+                            (now-sensor_frame_stamp)*1000 if sensor_frame_stamp is not None else -1,
+                            widget, scene_state, now)
+                        limb_sensors.send(osc, sequence, limbs, contacts)
                         widget_stream.write(json.dumps({"simulation_s": sim_s,
                             "recurrent_enabled_next_window": recurrent_enabled,
                             "motor": motor, "retina_pose": pose if embodied else None,
+                            "limbs": limbs, "contacts": contacts,
                             "widget": widget[1] if widget and now-widget[0] < 1 else None}) + "\n")
                         if widget and now-widget[0] < 1:
                             w = widget[1]
@@ -246,8 +288,15 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                         dashboard.update(status="running", sequence=sequence, simulation_s=sim_s,
                             run_id=output.name, recurrent_enabled=recurrent_enabled,
                             embodied=embodied, motor=motor, scene=scene_state,
+                            limbs=limbs, contacts=contacts,
+                            video_position_s=camera.position_s if source == 'video' else None,
+                            auditory=dict(available=bool(auditory.mask.any()), neurons=int(auditory.mask.sum()),
+                                source='video' if source == 'video' else 'microphone' if source == 'camera' else 'none',
+                                valid=audio_valid, rms=float(audio_rms),
+                                current=auditory.current(audio_rms) if audio_valid else 0.),
                             scene_age_ms=(now-scene_snapshot[1])*1000 if scene_snapshot else -1,
-                            source=source, osc_target=f"{runtime['host']}:{runtime['port']}",
+                            source=source, camera_device=device, mirror=mirror, video_loop=video_loop,
+                            osc_target=f"{runtime['host']}:{runtime['port']}",
                             active_neurons=int((neuron_counts > 0).sum()),
                             mean_hz=float(neuron_rates.mean()),
                             input_mean_hz=float(neuron_rates[input_mask].mean()),
@@ -269,6 +318,8 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
                     last_sent_tick = engine.tick
                     if sequence % max(1, round(runtime["osc_hz"])) == 0:
                         osc.hello(populations, sizes)
+                        if dashboard:
+                            osc.send('/mcns/limb/schema', 1, 'normalized-image', 'image-units/s', 'image-units/s2')
                         stream.flush()
                         if tracking_stream:
                             tracking_stream.flush()
@@ -304,15 +355,19 @@ def run(graph, config, source, duration, output, realtime=True, device=0, mirror
             try:
                 with suppress(OSError):
                     osc.send("/mcns/state", reason)
+                    osc.send("/mcns/auditory", sequence, 0, 0., 0., 0.)
                     # Explicit final zero so a receiver need not latch the last activity.
                     osc.activity(sequence, engine.tick * dt, np.zeros(len(populations)),
                                  np.zeros(len(populations)))
                     if embodied:
                         osc.send("/mcns/descending", sequence, 0., 0., 0.)
+                        osc.send('/mcns/motor', sequence, 0., 0., 0., 0., 0.)
                     if fly:
                         osc.send("/mcns/flight", sequence, 0., 0., 0., float(fly.position[0]), float(fly.position[1]))
                     if dashboard:
                         osc.send("/mcns/widget/flight", sequence, "offline", 0., 0., 0., .5, .5, 0.)
+                        limbs, contacts = limb_sensors.update(None, -1, -1, None, None, time.monotonic())
+                        limb_sensors.send(osc, sequence, limbs, contacts)
             finally:
                 osc.close()
         if scene_tracker:

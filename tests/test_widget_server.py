@@ -12,6 +12,7 @@ from pythonosc.osc_packet import OscPacket
 from mcns.__main__ import load_config
 from mcns.server import Controller
 from mcns.runtime import run
+from mcns.sensors import LIMB_IDS
 
 
 class WidgetServerTests(unittest.TestCase):
@@ -46,9 +47,11 @@ class WidgetServerTests(unittest.TestCase):
                     post('/api/control', {'action':'start','source':'white'})
                     on=wait_state(lambda s:s.get('other_mean_hz',0)>1)
                     post('/api/widget', dict(run_id=on['run_id'],mode='flying',x=.2,y=.3,
-                        vx=.1,vy=0,gain=.7,wing_hz=230,speed=.1,activity=.4))
+                        vx=.1,vy=0,gain=.7,wing_hz=230,speed=.1,activity=.4, sample_time=1.,
+                        probes=[dict(id=name,x=.2,y=.3) for name in LIMB_IDS]))
                     deadline=time.monotonic()+2
                     found=False
+                    pixel_found=False
                     while time.monotonic()<deadline:
                         packet=OscPacket(receiver.recv(65536))
                         for item in packet.messages:
@@ -56,8 +59,13 @@ class WidgetServerTests(unittest.TestCase):
                                 self.assertAlmostEqual(item.message.params[2],.7,places=5)
                                 self.assertAlmostEqual(item.message.params[5],.2,places=5)
                                 found=True
-                        if found:break
+                            if item.message.address=='/mcns/limb/antenna-L/pixel' and item.message.params[2]==1:
+                                self.assertAlmostEqual(item.message.params[5],1.,places=5)
+                                self.assertAlmostEqual(item.message.params[8],1.,places=5)
+                                pixel_found=True
+                        if found and pixel_found:break
                     self.assertTrue(found)
+                    self.assertTrue(pixel_found)
                     post('/api/control', {'action':'recurrence','enabled':False})
                     off=wait_state(lambda s:s.get('recurrent_enabled') is False and s.get('other_mean_hz')==0)
                     self.assertGreater(off['input_mean_hz'],0)

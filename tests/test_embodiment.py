@@ -42,4 +42,21 @@ class EmbodimentTests(unittest.TestCase):
         self.assertFalse(out['validated_looming'])
         self.assertTrue(all(out['readout_neurons'][k]>0 for k in ['escape_L','escape_R']))
 
+    def test_motor_decoder_excludes_retinal_input_and_decays_after_disconnect(self):
+        n=pd.read_feather('build/bilateral-v1/neurons.feather')
+        readout=DescendingReadout(n)
+        rates=np.where(n.is_input,100.,0.)
+        for _ in range(20):out=readout.update(rates,.05)
+        for key in ('locomotion_drive','turn_drive','probe_left','probe_right'):
+            self.assertEqual(out[key],0.)
+        rates[(n.somaSide=='R') & ~n.is_input]=2.
+        for _ in range(20):out=readout.update(rates,.05)
+        self.assertGreater(out['locomotion_drive'],.3)
+        self.assertGreater(out['turn_network'],0)
+        self.assertGreater(out['probe_right'],out['probe_left'])
+        rates=np.where(n.is_input,100.,0.)
+        for _ in range(80):out=readout.update(rates,.05)
+        self.assertLess(out['locomotion_drive'],1e-10)
+        self.assertLess(abs(out['turn_drive']),1e-10)
+
 if __name__=='__main__':unittest.main()

@@ -13,7 +13,7 @@
 
   class NeuralReadout {
     constructor(neurons) {
-      this.cells = neurons.map((n, i) => ({...n, i})).filter(n => !n.input && n.hex);
+      this.cells = neurons.map((n, i) => ({...n, i})).filter(n => !n.input && !n.auditory_input && n.hex);
       const xs = this.cells.map(n => n.hex[0] - .5 * n.hex[1]);
       const ys = this.cells.map(n => Math.sqrt(3) / 2 * n.hex[1]);
       const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -131,47 +131,133 @@
     }
   }
 
+  // Expressive motor layer: amplify measured neural output, never infer danger
+  // from labels or object velocity. Brief impulses are not extra sensory evidence.
+  class NeuralMotion {
+    constructor() { this.reset(); }
+    reset() {
+      this.baseline=null;this.burst=0;this.saccade=0;this.cooldown=0;this.armed=true;
+    }
+    update(dt,motor={},reaction=1.4) {
+      reaction=clamp(reaction,.5,2.5);
+      const raw=clamp(motor.locomotion_drive||0), escape=clamp(motor.escape_drive||0);
+      const turn=clamp(motor.turn_drive||0,-1,1);
+      const boost=v=>v>1e-6 ? 1-Math.exp(-3*reaction*Math.pow(clamp(v),.55)) : 0;
+      const urgency=escape>1e-6 ? 1-Math.exp(-8*reaction*escape) : 0;
+      if(this.baseline===null)this.baseline={raw,escape};
+      const onset=Math.max(0,raw-this.baseline.raw,2*(escape-this.baseline.escape));
+      const adapt=1-Math.exp(-dt/.45);
+      this.baseline.raw+=adapt*(raw-this.baseline.raw);
+      this.baseline.escape+=adapt*(escape-this.baseline.escape);
+      this.burst*=Math.exp(-dt/.14);this.saccade*=Math.exp(-dt/.065);
+      this.cooldown=Math.max(0,this.cooldown-dt);
+      if(onset<.015)this.armed=true;
+      if(onset>.045 && this.armed && this.cooldown===0) {
+        this.burst=1-Math.exp(-7*reaction*onset);this.armed=false;this.cooldown=.3;
+        // An asymmetric neural signal supplies direction; no coin-flip saccades.
+        const side=Math.sign(turn || ((motor.probe_right||0)-(motor.probe_left||0)));
+        this.saccade=side*Math.min(18,(5+12*this.burst)*reaction);
+      }
+      const locomotion=boost(raw);
+      const alive=Math.max(raw,escape,Math.abs(turn),motor.probe_left||0,motor.probe_right||0)>1e-6;
+      if(!alive){this.burst=0;this.saccade=0;}
+      const turnRate=clamp(7*Math.tanh(3*reaction*turn)+this.saccade,-22,22);
+      return {locomotion,urgency,burst:this.burst,turnRate,
+        speed:Math.min(1.8,.34*locomotion+.8*urgency+.95*this.burst),
+        phaseRate:34*locomotion+52*urgency+45*this.burst,
+        probe_left:clamp(boost(motor.probe_left||0)+.65*urgency+.6*this.burst),
+        probe_right:clamp(boost(motor.probe_right||0)+.65*urgency+.6*this.burst)};
+    }
+  }
+
   class EmbodiedAgent extends FlyAgent {
-    constructor(seed=42){super(seed);this.angle=0;this.contact=null;this.lastBox=null;this.mode='flying';}
-    update(dt,drive,motor,scene,connected=true){
-      if(!connected)return {...this.output(drive,0),mode:'offline'};
+    constructor(seed=42) {
+      super(seed);this.contact=null;this.lastBox=null;this.phase=0;this.antennaPhase=0;
+      this.motion=new NeuralMotion();this.flightSpeed=0;
+    }
+    update(dt,drive,motor,scene,connected=true,reaction=1.4) {
+      if(!connected) {
+        this.vx=this.vy=this.flightSpeed=0;this.motion.reset();
+        return {...this.output(drive,0),mode:'offline',phase:this.phase,antenna_phase:this.antennaPhase};
+      }
       dt=clamp(dt,0,.05);this.time+=dt;
-      const objects=scene?.objects||[];
-      const escape=motor?.escape_drive||0, turn=motor?.turn_drive||0;
+      const objects=scene?.objects||[],landing=clamp(motor?.landing_drive||0);
+      const movement=this.motion.update(dt,motor||{},reaction);
+      const {locomotion,urgency,burst,turnRate}=movement;
+      const energy=Math.max(locomotion,urgency,burst);
       const oldX=this.x,oldY=this.y;
-      if(this.contact!==null){
+      this.angle+=dt*turnRate;
+      this.phase+=dt*movement.phaseRate;
+      this.antennaPhase+=dt*(18*Math.max(movement.probe_left,movement.probe_right)+65*urgency+40*burst);
+      const takeoff=urgency>.18;
+      if(this.contact!==null) {
         const surface=objects.find(o=>o.id===this.contact);
-        if(!surface||escape>.18){this.contact=null;this.lastBox=null;this.mode='flying';this.sinceMode=0;}
-        else{
+        if(!surface||takeoff){this.contact=null;this.lastBox=null;this.sinceMode=0;}
+        else {
           const b=surface.box;
           if(this.lastBox){this.x+=b[0]-this.lastBox[0];this.y+=b[1]-this.lastBox[1];}
-          this.x+=Math.cos(this.angle)*(.012+.025*drive.activity)*dt;
+          this.x+=Math.cos(this.angle)*(.16*locomotion+.18*burst)*dt;
           this.x=clamp(this.x,b[0]+.01,Math.max(b[0]+.01,b[2]-.01));
-          this.y=b[1]+.012;this.lastBox=[...b];this.mode='walking';
-          if(this.x<=b[0]+.011||this.x>=b[2]-.011)this.angle=Math.PI-this.angle;
+          this.y=b[1]+.012;this.lastBox=[...b];this.mode='walking';this.flightSpeed=0;
+          if(locomotion>0 && (this.x<=b[0]+.011||this.x>=b[2]-.011))this.angle=Math.PI-this.angle;
         }
       }
-      if(this.contact===null){
+      if(this.contact===null) {
         this.sinceMode+=dt;
-        // Explicit minimal motor decoder + small baseline search; no person-motion trigger.
-        this.angle+=dt*(2.5*turn+(this.random()-.5)*.3);
-        const speed=.055+.1*drive.activity+.35*escape;
-        this.vx=Math.cos(this.angle)*speed;this.vy=Math.sin(this.angle)*speed;
-        this.x+=this.vx*dt;this.y+=this.vy*dt;this.mode=escape>.18?'escaping':'flying';
-        if(this.x<.03||this.x>.97)this.angle=Math.PI-this.angle;
-        if(this.y<.03||this.y>.96)this.angle=-this.angle;
-        // Contact constraint: slow encounter with a detected object's top edge.
-        if(this.sinceMode>1&&escape<.05)for(const object of objects){
+        const target=movement.speed*(1-.6*landing*(1-urgency));
+        // Fast attack, short braking: an impulse has acceleration, not a position jump.
+        const tau=target>this.flightSpeed ? .035 : .075;
+        this.flightSpeed+=(target-this.flightSpeed)*(1-Math.exp(-dt/tau));
+        if(this.flightSpeed<1e-6)this.flightSpeed=0;
+        this.x+=Math.cos(this.angle)*this.flightSpeed*dt;this.y+=Math.sin(this.angle)*this.flightSpeed*dt;
+        this.mode=takeoff?'escaping':'flying';
+        if(this.flightSpeed>0 && ((this.x<.03 && Math.cos(this.angle)<0)||(this.x>.97 && Math.cos(this.angle)>0)))this.angle=Math.PI-this.angle;
+        if(this.flightSpeed>0 && ((this.y<.03 && Math.sin(this.angle)<0)||(this.y>.96 && Math.sin(this.angle)>0)))this.angle=-this.angle;
+        // Strong neural reactions override landing; detections supply geometry only.
+        if(landing>.05 && urgency<.1 && burst<.15)for(const object of objects){
           const b=object.box;
           if(this.x>b[0]+.01&&this.x<b[2]-.01&&Math.abs(this.y-b[1])<.025){
-            this.contact=object.id;this.lastBox=[...b];this.mode='walking';this.y=b[1]+.012;break;
+            this.contact=object.id;this.lastBox=[...b];this.mode='walking';this.y=b[1]+.012;
+            this.flightSpeed=0;break;
           }
         }
       }
-      this.x=clamp(this.x,.025,.975);this.y=clamp(this.y,.03,.96);
-      this.vx=(this.x-oldX)/Math.max(dt,.001);this.vy=(this.y-oldY)/Math.max(dt,.001);
-      return {...this.output(drive,this.mode==='walking'?0:1),contact_id:this.contact};
+      this.x=clamp(this.x,.03,.97);this.y=clamp(this.y,.03,.96);
+      this.vx=dt?(this.x-oldX)/dt:0;this.vy=dt?(this.y-oldY)/dt:0;
+      return {...this.output(drive,this.mode==='walking'?0:energy),phase:this.phase,
+        antenna_phase:this.antennaPhase,burst,urgency,turn_rate:turnRate,
+        contact_id:this.contact,locomotion,probe_left:movement.probe_left,probe_right:movement.probe_right};
     }
+  }
+
+  // Shared rendering/measurement geometry. All points are in normalized image space.
+  // Aspect correction keeps lengths stable across portrait/landscape previews and resizing.
+  function crawlerRig(fly, aspect=4/3, size=1.4) {
+    const scale=.0018*size, phase=fly.phase||0;
+    const heading=Math.atan2(Math.sin(fly.angle),aspect*Math.cos(fly.angle));
+    const transform=([x,y])=>({x:fly.x+scale*(x*Math.cos(heading)-y*Math.sin(heading))/aspect,
+      y:fly.y+scale*(x*Math.sin(heading)+y*Math.cos(heading))});
+    const limbs=[];
+    for(const side of [-1,1])for(let i=0;i<3;i++) {
+      const activity=side<0?(fly.probe_left||0):(fly.probe_right||0);
+      // Alternating tripods, quick swing and slower stance; gain comes from the circuit.
+      const cycle=phase+i*Math.PI+(side>0?Math.PI:0);
+      const stride=Math.tanh(1.6*Math.sin(cycle))*13*activity;
+      const forward=[26,0,-27][i];
+      const points=[[7-i*7,side*5],[forward*.6+stride,side*(19+4*activity)],
+        [forward+stride,side*(32+5*activity)],[forward+stride-8,side*(43+4*activity)]];
+      limbs.push({id:'leg-'+(side<0?'L':'R')+(i+1),points:points.map(transform)});
+    }
+    for(const side of [-1,1]) {
+      const activity=side<0?(fly.probe_left||0):(fly.probe_right||0);
+      const sweep=Math.sin((fly.antenna_phase??phase*.63)+side)*17*activity;
+      limbs.push({id:'antenna-'+(side<0?'L':'R'),points:[[17,side*4],[31,side*(14+sweep*.25)],
+        [52+sweep,side*(26+sweep)]].map(transform)});
+    }
+    return {limbs,probes:limbs.map(l=>({id:l.id,...l.points[l.points.length-1]})),
+      body:[[-24,0],[-11,-8],[5,-7],[18,0],[5,7],[-11,8],[-24,0]].map(transform),
+      head:transform([14,0]),thorax:transform([0,0]),
+      wings:[-1,1].map(side=>[[0,side*5],[-22,side*(18+Math.sin(phase*4)*4)],[-29,side*9],[-8,side*3]].map(transform))};
   }
 
   // Strong image edges are candidate 2D perches, not semantic object detections.
@@ -190,7 +276,7 @@
     }
     return chosen;
   }
-  const api = {NeuralReadout, FlyAgent, EmbodiedAgent, imageAnchors, clamp};
+  const api = {NeuralReadout, FlyAgent, EmbodiedAgent, NeuralMotion, crawlerRig, imageAnchors, clamp};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MCNSWidget = api;
 })(typeof window === 'undefined' ? globalThis : window);

@@ -55,6 +55,29 @@ def select_bilateral(a, path, selection, batches):
         frontier=np.array(sorted(set(parents.pre)-selected),dtype=np.int64)
         selected.update(frontier)
         print(f'Bilateral upstream layer {depth+1}: {len(frontier)} actual cells',flush=True)
+    if selection.get('auditory'):
+        # Sensory cells have rootSide rather than somaSide. Keep both annotations.
+        auditory = a[(a.status == 'Traced') & (a.subclass == 'auditory') &
+                     a.type.fillna('').str.startswith(('JO-A', 'JO-B')) & a.rootSide.isin(['L', 'R'])]
+        frontier = auditory.bodyId.to_numpy()
+        selected.update(frontier)
+        allowed = a[(a.status == 'Traced') & a.superclass.isin(
+            ['cb_intrinsic', 'ascending', 'descending_neuron', 'auditory'])].bodyId.to_numpy()
+        for depth in range(selection.get('auditory_layers', 3)):
+            pieces = []
+            for pre, post, weight in batches(path):
+                mask = np.isin(pre, frontier) & np.isin(post, allowed)
+                if mask.any():
+                    pieces.append(pd.DataFrame({'pre': pre[mask], 'post': post[mask], 'weight': weight[mask]}))
+            if not pieces:
+                break
+            children = (pd.concat(pieces).groupby(['pre', 'post'], as_index=False).weight.sum()
+                        .sort_values(['weight', 'post'], ascending=[False, True]))
+            children = children[children.weight >= selection.get('auditory_min_synapses', 5)]
+            children = children.groupby('pre').head(selection.get('auditory_downstream_per_cell', 8))
+            frontier = np.array(sorted(set(children.post) - selected), dtype=np.int64)
+            selected.update(frontier)
+            print(f'Auditory downstream layer {depth+1}: {len(frontier)} actual cells', flush=True)
     neurons=a[a.bodyId.isin(selected)].sort_values('bodyId').reset_index(drop=True).copy()
     neurons['is_readout']=neurons.type.isin(READOUT_TYPES+['DNp15','DNp20','DNp22']) | neurons.type.fillna('').str.startswith('DNg02_')
     return neurons, rows

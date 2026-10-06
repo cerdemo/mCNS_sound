@@ -50,7 +50,7 @@ class ImageInput:
 
 class Camera:
     """A single capture owner, one replaceable frame, no frame queue."""
-    def __init__(self, device=0, mirror=False):
+    def __init__(self, device=0, mirror=True):
         import cv2
         self.cv2, self.mirror = cv2, mirror
         self.capture = cv2.VideoCapture(device)
@@ -102,3 +102,78 @@ class Camera:
 def grayscale(frame):
     import cv2
     return cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (128, 128)).astype(np.float32) / 255
+
+
+def inspect_video(path):
+    """Validate actual decodability, not just the filename supplied by the browser."""
+    import cv2
+    capture = cv2.VideoCapture(str(path))
+    try:
+        ok, frame = capture.read()
+        fps = float(capture.get(cv2.CAP_PROP_FPS))
+        if not ok or frame is None or not np.isfinite(fps) or not 0 < fps <= 240:
+            raise ValueError('Video could not be decoded. Try an MP4 (H.264) or MOV file.')
+        count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        count = int(count) if np.isfinite(count) and count > 0 else 0
+        h, w = frame.shape[:2]
+        return dict(fps=fps, frames=count, duration_s=count/fps if count else None, width=w, height=h)
+    finally:
+        capture.release()
+
+
+class VideoFile:
+    """Paced, local video frames with the same latest-frame interface as Camera.
+
+    Uses the container's nominal FPS; ignores the audio track. Sequence numbers
+    remain monotonic across loops so trackers never confuse a rewind with old data.
+    """
+    def __init__(self, path, loop=True):
+        import cv2
+        self.metadata = inspect_video(path)
+        self.cv2, self.loop = cv2, loop
+        self.capture = cv2.VideoCapture(str(path))
+        if not self.capture.isOpened():
+            self.capture.release()
+            raise RuntimeError('Video could not open')
+        self.lock, self.stop, self.ended = threading.Lock(), threading.Event(), threading.Event()
+        self.latest, self.error, self.sequence = None, None, 0
+        self.position_s = 0.
+        self.thread = threading.Thread(target=self._capture, daemon=True)
+        self.thread.start()
+
+    def _capture(self):
+        try:
+            deadline = time.monotonic()
+            while not self.stop.is_set():
+                ok, frame = self.capture.read()
+                if not ok:
+                    if not self.loop:
+                        self.ended.set()
+                        break
+                    self.capture.set(self.cv2.CAP_PROP_POS_FRAMES, 0)
+                    ok, frame = self.capture.read()
+                    if not ok:
+                        raise RuntimeError('Video could not rewind')
+                with self.lock:
+                    self.sequence += 1
+                    self.position_s = max(0., (self.capture.get(self.cv2.CAP_PROP_POS_FRAMES)-1)/self.metadata["fps"])
+                    self.latest = (self.sequence, time.monotonic(), frame)
+                deadline += 1/self.metadata['fps']
+                self.stop.wait(max(0, deadline-time.monotonic()))
+        except Exception as exc:
+            self.error = exc
+        finally:
+            self.capture.release()
+
+    def get(self):
+        if self.error:
+            raise self.error
+        with self.lock:
+            # A low-FPS video's held frame is still a valid current presentation.
+            if self.latest is None:
+                return None
+            return self.latest[0], time.monotonic(), self.latest[2]
+
+    def close(self):
+        self.stop.set()
+        self.thread.join(timeout=2)

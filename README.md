@@ -1,7 +1,177 @@
-# MaleCNS browser widget → sound + OSC
+# MaleCNS crawler instrument → camera + connectome + OSC
 
 Camera or controlled image → continuous LIF simulation on MaleCNS connections → OSC.
 The Max/MSP patch is outside this project's scope. The default target is `127.0.0.1:9000`.
+
+## Crawler instrument — October 2026
+
+The fly now has six long articulated legs, two scanning antennae, an angular wire body,
+and translucent wing outlines inspired by the supplied crawler video. Cyan and magenta
+identify left/right limbs. Tip colors come from the raw camera image, and selecting a limb
+shows its pixel, object and motion measurements. This is implemented in the existing local
+widget; no web scraping is involved.
+
+In the default binocular mode, **no random turn or constant exploration speed remains**.
+Smoothed activity of all selected non-input cells on each side drives speed, gait phase and
+antenna sweep. Bilateral downstream activity difference and DNa02 difference drive turning;
+DNp01/02/04/11 responses drive acceleration, and DNp07/10 gates geometric landing.
+These are explicit artistic motor decoders, not recovered motor-muscle wiring or validated
+natural fly behavior. The existing LIF physiology and real graph weights are unchanged.
+The separate hybrid physiology experiment remains separate because its validation failed.
+
+`embodiment.decoder` controls the artistic scales: `network_scale_hz=2` gives
+`locomotion = 1 − exp(−(mean_left + mean_right)/(2 × scale))`; antenna/leg amplitude uses
+`1 − exp(−mean_side/scale)`. `bilateral_turn_scale_hz=6` scales the right-minus-left mean
+added to the DNa02 difference/40. No external current is injected into motor cells.
+Disconnecting real synapses leaves the visual input active while downstream neural drive
+and self-generated motion decay. Surface transport and boundary constraints remain modeled
+physics. The leg cycle is a procedural embodiment of neural output, not six recovered
+biological leg controllers. All eight tips sample the image plane during flight and walking.
+
+### Agile, amplified reactions
+
+The browser motor layer now amplifies the measured connectome output without changing
+retinal input, LIF dynamics or synaptic weights. **Reaction gain** (0.5–2.5×, default 1.4×)
+controls this artistic expression. Lower sustained activity gives visible cruising and
+leg motion; rising downstream or acceleration-DN activity creates a short dart. A neural
+left/right difference supplies the direction of a fast turn. A symmetric response does
+not invent a left/right choice, and object labels or tracked human motion do not trigger it.
+
+Onsets are measured against a 450 ms adaptive baseline. Dart amplitude decays over 140 ms,
+turn impulses over 65 ms; retriggering requires both a new rising signal and at least
+300 ms between events. Speed approaches its target with a 35 ms attack / 75 ms brake and
+is capped at 1.8 normalized image units/s. Amplified DN response can release a perched fly
+at a lower raw neural level than before. Legs use alternating tripod phases with sharper
+strokes; antennae have a separate faster phase during reactions. These are animation and
+motor-design parameters, not experimentally fitted fly kinematics or validated threat
+recognition. Existing `/mcns/motor` values remain the raw decoder outputs, while
+`/mcns/widget/flight` and limb motion OSC reflect the actual amplified virtual movement.
+
+The HUD shows actual speed, amplified DN reaction and transient burst strength. With no
+neural drive, bursts stop and motion brakes to rest. Losing live telemetry clears stored
+impulses, preventing an old dart from resuming when the browser reconnects.
+
+The **Inside the fly** panel shows actual Hz and active-cell counts for input, optic,
+projection, central and descending groups, plus live motor values. All cells remain available
+in the detailed neural map. Silent cells are shown as silent; the panel does not imply that
+all neurons or all descending pathways fire on every scene.
+
+### Limb OSC contract (extension version 1)
+
+Default destination: `127.0.0.1:9000`, target 20 Hz. Existing population/flight messages remain.
+The `/mcns/descending` turn value is now the combined motor turn; `/mcns/motor` separates its
+contributions. Each `ID` is `leg-L1`, `leg-L2`, `leg-L3`, `leg-R1`, `leg-R2`, `leg-R3`,
+`antenna-L`, or `antenna-R`. Legs are numbered front to rear.
+
+- `/mcns/limb/schema`: `version:int (=1) coordinates:string velocity_units:string acceleration_units:string`, repeated once per second.
+- `/mcns/limb/ID/pixel`: `sequence:int frame:int valid:int x:float y:float r:float g:float b:float luminance:float contrast:float frame_age_ms:float`.
+- `/mcns/limb/ID/motion`: `sequence:int valid:int vx:float vy:float ax:float ay:float speed:float acceleration:float`.
+- `/mcns/limb/ID/object`: `sequence:int inference_valid:int object_id:int label:string confidence:float`.
+- `/mcns/contact`: `sequence:int limb_id:string event:string object_id:int label:string`; event is `enter` or `exit` of an object box.
+- `/mcns/motor`: `sequence:int locomotion:float turn_dn:float turn_network:float probe_left:float probe_right:float`.
+
+Coordinates: x=0 left / 1 right, y=0 top / 1 bottom of the **source image**, independent
+of browser size, letterboxing and display pixel density. Tips outside the image are invalid,
+not clamped to edge pixels. Probe reach intentionally changes geometry. RGB is normalized
+0–1, averaged over a 3×3 neighborhood on the latest raw unannotated BGR frame (converted
+to RGB). Luminance is `.2126 R + .7152 G + .0722 B` on encoded channels, not a calibrated
+physical light measurement; contrast is its local standard deviation.
+
+Motion measures **virtual endpoint motion**, not real limb acceleration or optical flow.
+Units are image widths/heights per second and per second squared. Browser monotonic sample
+timestamps (offset by the page time origin so reloads do not go backwards) drive finite differences. First samples and gaps over 250 ms reset derivatives;
+initial acceleration is zero until two velocity estimates exist. Repeated samples retain
+the previous derivative. Frame and endpoint age must both be below 350 ms; lost data and
+shutdown emit invalid/zero messages and contact exits. Receivers should also expire state
+when UDP packets stop (e.g. a 500 ms watchdog); delivery is not guaranteed.
+
+Semantics use the smallest enclosing fresh detection box (confidence breaks equal-area
+ties), not segmentation or inferred physical contact. An empty scene with valid inference
+has object ID −1; unavailable/stale inference has `inference_valid=0`. Detection age is
+available in the dashboard; detection and pixel samples can come from different recent
+camera frames. The rendered preview may lag the raw samples; each pixel packet includes
+its actual source frame and age. Camera images are not recorded. Derived probe samples and
+contact events are stored with the existing `runs/.../widget.jsonl` telemetry.
+
+## Auditory input and video soundtrack
+
+The default audiovisual graph has **9,956 cells / 447,429 anatomical connections**.
+It preserves the original bilateral visual selection and adds **102 traced, auditory-labelled
+JO-A/JO-B sensory cells** (52 left, 50 right by `rootSide`) and three downstream layers.
+Each layer selects up to eight real targets per cell, at least five synapses per pair,
+from traced central/ascending/descending cells. All edges between selected cells retain
+the source dataset's weights. Sensory `somaSide` stays missing; `rootSide` is not relabelled
+as a soma. The dataset has other auditory-labelled cells that are outside this selection.
+
+**Video:** import and Start; hearing starts automatically when an audio track exists.
+**Unmute video audio / Mute video audio** controls only the soundtrack you hear.
+It is independent of both neural hearing and **Turn fly sound on/off** (the synthesizer).
+Playback follows the backend frame position, including loop/restart/stop. Files without
+an audio track remain usable and explicitly show **No audio track**. FFmpeg/ffprobe must
+be installed for soundtrack decoding; decode failures are reported without blocking video.
+A temporary stereo 22,050 Hz PCM cache is served locally with byte ranges. It is removed
+with its imported video. Nominal-FPS video timing and browser output latency can cause
+small audiovisual offsets; this is not a sample-accurate audiovisual transport.
+
+**Camera:** Start, then **Listen to microphone** and allow the browser's microphone prompt.
+**Stop microphone** releases the microphone. Stopping the run, changing source, hiding or
+closing the page also releases it. Raw microphone audio stays in the browser; only a band
+energy value is sent to the local Python process. Stale envelopes expire after 250 ms.
+Echo cancellation is requested; speaker sound can still enter the microphone.
+
+Transduction is deliberately simple: 80–1000 Hz band energy, mono, log-scaled from
+−80 to −24 dBFS into dimensionless JO external current (gain 2.2). Silence gives zero
+current. The same envelope drives both sides; mono audio does not supply source direction.
+Video uses a second-order Butterworth bandpass; the browser uses cascaded second-order
+high/low pass filters, so the two paths are approximate, not matched calibrated microphones.
+No speech, object, song or threat classifier is used. JO cells are excluded from the motor
+decoder: sound can influence movement only after propagation through real connections.
+This is an **uncalibrated auditory-input model**, not recovered antenna mechanics or
+validated fly auditory physiology. 37 selected JO cells have unknown/missing transmitter
+signs and retain zero outgoing effective weights; signs are not invented to activate them.
+
+`/mcns/auditory`: sequence, input_valid, band_rms, injected_current, mean_JO_Hz.
+A final zero packet is sent when the run stops. The **Auditory input** card shows the actual
+JO firing activity. Disconnecting wiring leaves sensory current active but removes the
+synaptic route to other cells; the isolated-audio regression test verifies this.
+
+Rebuild explicitly with:
+```
+.mcns/bin/python -m mcns prepare --config configs/audiovisual.json --graph build/audiovisual-v1
+```
+As with other builds, choose a new output directory if it already exists. Video hearing
+is currently provided by the browser-controlled `serve` importer; bare CLI video runs
+without an imported audio track remain visual-only.
+
+## Camera mirroring and local video import
+
+Camera input is now horizontally mirrored by default: raising the hand on your right
+appears on the screen's right. **Mirror camera** can be unchecked before starting.
+The flip is applied once at capture, before the neural input, object/hand/face detection,
+preview and probe sampling. Their coordinates therefore all agree; it is not a CSS-only flip.
+
+To use a video, **Stop → Import video → choose a file → Start**. The input selector
+switches to **Imported video** after successful import. **Loop video** is on by default;
+uncheck it before starting to finish the run at the end of the file. Stop releases the
+file reader, and Start plays from the beginning. Imported video uses the same binocular
+vision, object detection, limb sampling and OSC pipeline as the camera. Videos retain
+their original left/right orientation. Audio is decoded locally for neural hearing and optional playback.
+
+MP4, MOV, M4V, AVI, WebM and MKV containers are accepted, subject to locally available
+OpenCV codecs (MP4/H.264 is a useful default). Import validates a decoded frame. Maximum
+file size is 1 GB. Playback follows the container's nominal FPS, so variable-frame-rate
+files may have approximate timing. The video is copied only into the local server's
+private temporary directory; it is not sent to a remote service. The copy is removed
+when replaced or when the server closes normally. A page reload keeps the imported video;
+a server restart requires importing it again. The original file is never edited.
+
+CLI equivalents:
+
+```sh
+.mcns/bin/python -m mcns run --source camera --device 1 --track
+.mcns/bin/python -m mcns run --source camera --no-mirror
+.mcns/bin/python -m mcns run --source video --video /absolute/path/clip.mp4 --track --no-video-loop --duration 600
+```
 
 ## Binocular browser widget (default)
 
@@ -11,10 +181,11 @@ python -m mcns serve
 ```
 
 [Open the widget](http://127.0.0.1:8765), then use **Start** and **Turn sound on**.
-The default graph is `build/bilateral-v1`, config `configs/bilateral.json`.
+The default graph is `build/audiovisual-v1`, config `configs/audiovisual.json`.
+The original visual-only `build/bilateral-v1` remains available with `configs/bilateral.json`.
 The camera index and the controlled image source are chosen in the browser. Stop closes the camera and
 the simulation; the server stays up. Ctrl-C in the terminal shuts the server down.
-OSC continues to `127.0.0.1:9000`. Camera frames are not sent out or saved to disk.
+OSC continues to `127.0.0.1:9000`. Camera frames are not sent out or saved to disk; imported video is held in a local temporary file.
 
 ### Simulation assumptions versus the real circuit
 
@@ -31,18 +202,17 @@ The circuit is not the full CNS; graph selection and severed connections are rec
   receptor/physiology detail are not modeled yet. Some cell types on the left lack
   column annotations; the right-side map is not copied over as the left.
 - Smoothed activity of DNp01/02/04/11 above baseline is mapped to the acceleration/takeoff
-  readout; the right-minus-left activity difference of DNa02 is mapped to turning. DNp07/10 activity is measured
-  and is not yet used in landing control. This output mapping is not a biological motor-muscle simulation.
+  readout; the DNa02 difference and the bilateral downstream mean difference are mapped to turning. DNp07/10 activity
+  gates landing when an object top edge is encountered. This output mapping is not a biological motor-muscle simulation.
 - The rules **a person moves → flee** and **wait three seconds → come back out** are absent in this version.
-  A small baseline exploration speed, heading noise, screen bounds, and object contact are still modeled physics
-  assumptions. The `escaping` widget OSC mode means experimental DN acceleration; it is not validated fear.
-- Landing is a geometric encounter with the top edge of a detected object's box. The fly is carried
+  Screen bounds and object contact remain modeled physics assumptions; baseline exploration and heading noise are removed in the default mode. The `escaping` widget OSC mode means experimental DN acceleration; it is not validated fear.
+- Landing requires neural landing drive and a geometric encounter with the top edge of a detected object's box. The fly is carried
   with the box and walks. The box is not a 3D surface or a segmentation mask; false detections
   and perspective can produce landing in mid-air. When the object disappears, the fly takes off.
-- Mean column activity outside the input affects speed and timbre; the flight sound is silent while walking.
+- Bilateral downstream activity drives locomotion; mean column activity outside the input affects timbre; the flight sound is silent while walking.
   Sound is synthesized in the browser with a harmonic oscillator, a filter, frequency modulation, and stereo pan.
 - **A/B: disconnect wiring** zeros the real synaptic matrix; the same camera input and
-  L1/L2 drive remain. Synaptic state decays naturally. Baseline exploration physics continues.
+  L1/L2 drive remain. Synaptic state decays naturally. Downstream motor drive decays; there is no baseline exploration in the default mode.
 
 ### Objects and multiple people
 
@@ -85,7 +255,7 @@ To compare the older behavioral prototype:
 
 Widget OSC: `/mcns/widget/flight sequence:int mode:string gain:float wing_hz:float speed:float x:float y:float activity:float`.
 DN OSC: `/mcns/descending sequence:int escape_drive:float turn_drive:float landing_drive:float`.
-`escape_drive` and `landing_drive` are 0..1, `turn_drive` is −1..1; these are explicit decoder parameters.
+`escape_drive` and `landing_drive` are 0..1, `turn_drive` is −1..1; these are explicit decoder parameters; turn includes DN and bilateral downstream contributions.
 The legacy `/mcns/flight` address is sent only in the older `--behavior` version. The population count is now
 682; a Max mapping should follow the `/mcns/population` metadata.
 
@@ -177,7 +347,7 @@ Neural rates are not zeroed during hiding; the behavior layer provides a separat
 
 The first camera use may require a macOS camera permission. If access is denied, check the app that
 runs the command under System Settings → Privacy & Security → Camera.
-`--device 1` selects another camera; `--mirror` flips the image horizontally (off by default).
+`--device 1` selects another camera; `--no-mirror` disables the default horizontal camera flip.
 The image is not recorded; inference uses a local model. Only neural activity,
 performance, behavior, and tracking features are kept on disk. The camera preview is on the dashboard.
 

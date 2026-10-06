@@ -39,19 +39,23 @@ def main():
     build.add_argument("--graph", default="build/visual-v1")
     build.add_argument("--config", default="configs/default.json")
     widget = sub.add_parser("serve", help="Browser-controlled widget, synthesis and OSC bridge")
-    widget.add_argument("--graph", default="build/bilateral-v1")
-    widget.add_argument("--config", default="configs/bilateral.json")
+    widget.add_argument("--graph", default="build/audiovisual-v1")
+    widget.add_argument("--config", default="configs/audiovisual.json")
     widget.add_argument("--models", default="models")
     widget.add_argument("--dashboard-port", type=int, default=8765)
     live = sub.add_parser("run", help="Run controlled stimulus or live camera input")
     live.add_argument("--graph", default="build/visual-v1")
     live.add_argument("--config", default="configs/default.json")
-    live.add_argument("--source", choices=["black", "gray", "white", "static", "bar", "camera"], default="bar")
+    live.add_argument("--source", choices=["black", "gray", "white", "static", "bar", "camera", "video"], default="bar")
     live.add_argument("--duration", type=float, default=60)
     live.add_argument("--output", default=None)
     live.add_argument("--fast", action="store_true", help="Run synthetic input without wall-clock pacing")
     live.add_argument("--device", type=int, default=0)
-    live.add_argument("--mirror", action="store_true", help="Mirror camera horizontally (default: off)")
+    live.add_argument("--mirror", action=argparse.BooleanOptionalAction, default=True,
+                      help="Mirror camera horizontally (default: on; video stays unmirrored)")
+    live.add_argument('--video', help='Local video file for --source video')
+    live.add_argument('--video-loop', action=argparse.BooleanOptionalAction, default=True,
+                      help='Loop the imported video (default: on)')
     live.add_argument("--track", action="store_true", help="Measure hand/face movement separately from neural input")
     live.add_argument("--models", default="models")
     live.add_argument("--dashboard", action="store_true", help="Serve live neuron maps at localhost:8765")
@@ -74,12 +78,14 @@ def main():
         return
     if not math.isfinite(args.duration) or args.duration <= 0:
         parser.error("--duration must be finite and positive")
-    if args.fast and args.source == "camera":
+    if args.fast and args.source in ("camera", "video"):
         parser.error("--fast is only supported for synthetic stimuli")
+    if args.source == 'video' and (not args.video or not Path(args.video).is_file()):
+        parser.error('--source video requires --video with an existing local file')
     if args.behavior:
         args.track = True
-    if args.track and args.source != "camera":
-        parser.error("--track requires --source camera")
+    if args.track and args.source not in ("camera", "video"):
+        parser.error("--track requires --source camera or video")
     if args.host:
         config["runtime"]["host"] = args.host
     if args.port is not None:
@@ -90,7 +96,8 @@ def main():
         parser.error("Dashboard port must be in 1..65535")
     output = args.output or ("runs/" + datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
     run(args.graph, config, args.source, args.duration, output, not args.fast, args.device,
-        args.mirror, args.track, args.models, args.dashboard_port if args.dashboard else None, args.behavior)
+        args.mirror, args.track, args.models, args.dashboard_port if args.dashboard else None, args.behavior,
+        video_path=args.video, video_loop=args.video_loop)
 
 
 if __name__ == "__main__":
